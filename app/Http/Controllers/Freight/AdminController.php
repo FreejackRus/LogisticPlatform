@@ -14,6 +14,7 @@ use App\Services\AuditLogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -272,6 +273,12 @@ class AdminController extends Controller
             'current_city' => ['nullable', 'string', 'max:255'],
             'current_region' => ['nullable', 'string', 'max:255'],
         ]);
+
+        if (($data['is_available'] ?? null) === true && $vehicle->hasActiveDelivery()) {
+            throw ValidationException::withMessages([
+                'is_available' => 'Транспорт назначен на активную перевозку и не может быть отмечен доступным.',
+            ]);
+        }
 
         $old = $vehicle->only(array_keys($data));
         $vehicle->update($data);

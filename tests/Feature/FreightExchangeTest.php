@@ -389,6 +389,62 @@ it('separates carrier fleet managers from company drivers', function () {
         ->assertForbidden();
 });
 
+it('prevents admins from marking vehicles with active deliveries as available', function () {
+    $admin = freightUser('admin', ['email' => 'admin-active-vehicle@example.com']);
+    $shipper = freightUser('shipper', ['email' => 'admin-active-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $carrier = freightUser('carrier', ['email' => 'admin-active-carrier@example.com']);
+    $carrierCompany = freightCompany($carrier, 'carrier');
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Active admin vehicle load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'in_progress',
+        'delivery_stage' => 'carrier_selected',
+    ]);
+
+    $vehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Busy admin truck',
+        'is_available' => false,
+        'is_location_visible' => true,
+    ]);
+
+    Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'accepted',
+        'accepted_at' => now(),
+        'contract_accepted_at' => now(),
+        'contract_signed_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.vehicles.update', $vehicle), [
+            'is_available' => true,
+        ])
+        ->assertSessionHasErrors('is_available');
+
+    expect($vehicle->refresh()->is_available)->toBeFalse();
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.vehicles.update', $vehicle), [
+            'is_location_visible' => false,
+            'current_city' => 'Kazan',
+        ])
+        ->assertRedirect();
+
+    expect($vehicle->refresh()->is_available)->toBeFalse()
+        ->and($vehicle->is_location_visible)->toBeFalse()
+        ->and($vehicle->current_city)->toBe('Kazan');
+});
+
 it('allows carrier fleet roles to build accepted load route only for their delivery', function () {
     Http::fake([
         'router.project-osrm.org/route/v1/driving/*' => Http::response([

@@ -149,15 +149,7 @@ class Vehicle extends Model
             $errors[] = 'Транспорт сейчас не отмечен как доступный.';
         }
 
-        $hasActiveDelivery = $this->bids()
-            ->where('status', 'accepted')
-            ->whereHas('freightLoad', fn (Builder $query) => $query
-                ->where('status', 'in_progress')
-                ->whereKeyNot($load->id)
-            )
-            ->exists();
-
-        if ($hasActiveDelivery) {
+        if ($this->hasActiveDelivery($load)) {
             $errors[] = 'Транспорт уже назначен на активную перевозку.';
         }
 
@@ -183,5 +175,19 @@ class Vehicle extends Model
         }
 
         return $errors;
+    }
+
+    public function hasActiveDelivery(?FreightLoad $exceptLoad = null): bool
+    {
+        return $this->bids()
+            ->where('status', 'accepted')
+            ->whereHas('freightLoad', function (Builder $query) use ($exceptLoad) {
+                $query->where('status', 'in_progress');
+
+                if ($exceptLoad) {
+                    $query->whereKeyNot($exceptLoad->id);
+                }
+            })
+            ->exists();
     }
 }
