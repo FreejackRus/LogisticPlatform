@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Models\DeliveryEvent;
 use App\Models\FreightLoad;
 use App\Models\User;
 
@@ -33,12 +34,23 @@ class FreightLoadPolicy
 
     public function cancel(User $user, FreightLoad $load): bool
     {
-        return $this->update($user, $load) && in_array($load->status, ['draft', 'active', 'in_progress'], true);
+        if (! $this->update($user, $load)) {
+            return false;
+        }
+
+        if (in_array($load->status, ['draft', 'active'], true)) {
+            return true;
+        }
+
+        return $load->status === 'in_progress'
+            && DeliveryEvent::canCancelDelivery($load->delivery_stage);
     }
 
     public function complete(User $user, FreightLoad $load): bool
     {
-        return $this->update($user, $load) && $load->status === 'in_progress';
+        return $this->update($user, $load)
+            && $load->status === 'in_progress'
+            && DeliveryEvent::canConfirmDelivery($load->delivery_stage);
     }
 
     public function respond(User $user, FreightLoad $load): bool

@@ -29,6 +29,14 @@ class DeliveryEvent extends Model
         'delivery_confirmed',
     ];
 
+    public const DELIVERY_CONFIRMATION_STAGE = 'delivered_pending_confirmation';
+
+    public const CANCELLABLE_DELIVERY_STAGES = [
+        'carrier_selected',
+        'en_route_to_pickup',
+        'arrived_pickup',
+    ];
+
     public static function nextCarrierEvent(?string $currentStage): ?string
     {
         $index = array_search($currentStage, self::CARRIER_EVENT_TYPES, true);
@@ -46,6 +54,16 @@ class DeliveryEvent extends Model
             self::nextCarrierEvent($currentStage),
             'issue_reported',
         ]));
+    }
+
+    public static function canConfirmDelivery(?string $currentStage): bool
+    {
+        return $currentStage === self::DELIVERY_CONFIRMATION_STAGE;
+    }
+
+    public static function canCancelDelivery(?string $currentStage): bool
+    {
+        return in_array($currentStage, self::CANCELLABLE_DELIVERY_STAGES, true);
     }
 
     protected $fillable = [

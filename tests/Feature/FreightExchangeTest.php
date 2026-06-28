@@ -763,9 +763,15 @@ it('creates fixed-price responses without rejecting other carriers', function ()
             ->where('delivery.carrier.bid_id', $bid->id)
             ->where('delivery.carrier.carrier_cargo_photo_url', '/storage/'.$bid->carrier_cargo_photo_path)
             ->where('delivery.events.0.type', 'issue_reported')
-            ->where('delivery.canComplete', true)
+            ->where('delivery.canComplete', false)
             ->where('delivery.deliveryEventOptions.0', 'shipper_note')
         );
+
+    $this->actingAs($shipper)
+        ->patch(route('loads.complete', $load), [
+            'delivery_confirmation' => '123456',
+        ])
+        ->assertForbidden();
 
     $this->actingAs($secondCarrier)
         ->get(route('carrier.deliveries.index'))
@@ -870,6 +876,30 @@ it('creates fixed-price responses without rejecting other carriers', function ()
 
     expect($load->refresh()->delivery_stage)->toBe('arrived_pickup')
         ->and(DeliveryEvent::where('load_id', $load->id)->where('type', 'issue_reported')->exists())->toBeTrue();
+
+    foreach ([
+        'loaded' => 'Cargo loaded.',
+        'in_transit' => 'Vehicle left pickup point.',
+        'arrived_unloading' => 'Vehicle arrived at destination.',
+        'delivered_pending_confirmation' => 'Cargo is ready for receiver confirmation.',
+    ] as $type => $note) {
+        $this->actingAs($carrier)
+            ->post(route('loads.delivery-events.store', $load), [
+                'type' => $type,
+                'note' => $note,
+            ])
+            ->assertRedirect();
+    }
+
+    expect($load->refresh()->delivery_stage)->toBe('delivered_pending_confirmation');
+
+    $this->actingAs($shipper)
+        ->get(route('loads.delivery', ['load' => $load, 'confirm' => 'token-fixed-price-load']))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('delivery.canComplete', true)
+            ->where('delivery.events.0.type', 'delivered_pending_confirmation')
+        );
 
     $this->actingAs($shipper)
         ->patch(route('loads.complete', $load), [
@@ -996,6 +1026,21 @@ it('enforces vehicle eligibility for carrier responses and releases vehicles aft
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('carrierVehicles', 0)
         );
+
+    foreach ([
+        'en_route_to_pickup',
+        'arrived_pickup',
+        'loaded',
+        'in_transit',
+        'arrived_unloading',
+        'delivered_pending_confirmation',
+    ] as $type) {
+        $this->actingAs($carrier)
+            ->post(route('loads.delivery-events.store', $load), [
+                'type' => $type,
+            ])
+            ->assertRedirect();
+    }
 
     $this->actingAs($shipper)
         ->patch(route('loads.complete', $load), [

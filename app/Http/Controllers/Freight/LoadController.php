@@ -663,7 +663,7 @@ class LoadController extends Controller
                 ->sortByDesc('id')
                 ->map(fn (DeliveryEvent $event) => $this->deliveryEventPayload($event))
                 ->values(),
-            'canComplete' => $load->status === 'in_progress',
+            'canComplete' => (bool) request()->user()?->can('complete', $load),
             'canUpdateDelivery' => $load->status === 'in_progress',
             'deliveryEventOptions' => $load->status === 'in_progress'
                 ? DeliveryEvent::STAFF_EVENT_TYPES
