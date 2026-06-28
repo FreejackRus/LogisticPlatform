@@ -1415,6 +1415,8 @@ it('allows dispatcher connections without changing load status automatically', f
     $carrier = freightUser('carrier');
     $carrierCompany = freightCompany($carrier, 'carrier');
     $carrierCompany->update(['verification_status' => 'verified']);
+    $badCarrier = freightUser('carrier', ['email' => 'dispatcher-bad-carrier@example.com']);
+    $badCarrierCompany = freightCompany($badCarrier, 'carrier');
     $load = FreightLoad::create([
         'shipper_id' => $shipper->id,
         'company_id' => $shipperCompany->id,
@@ -1442,6 +1444,20 @@ it('allows dispatcher connections without changing load status automatically', f
         'is_location_visible' => true,
         'is_online' => true,
     ]);
+    $badVehicle = Vehicle::create([
+        'carrier_id' => $badCarrier->id,
+        'company_id' => $badCarrierCompany->id,
+        'title' => 'Small tent',
+        'body_type' => 'tent',
+        'capacity_kg' => 3000,
+        'volume_m3' => 12,
+        'current_city' => 'Moscow',
+        'current_lat' => 55.7100,
+        'current_lng' => 37.5100,
+        'is_available' => true,
+        'is_location_visible' => true,
+        'is_online' => true,
+    ]);
 
     $this->actingAs($dispatcher)
         ->post(route('dispatcher.connections.store'), [
@@ -1456,6 +1472,26 @@ it('allows dispatcher connections without changing load status automatically', f
         ->and($load->refresh()->status)->toBe('active');
 
     $connection = DispatcherConnection::first();
+
+    $this->actingAs($dispatcher)
+        ->post(route('dispatcher.connections.store'), [
+            'load_id' => $load->id,
+            'vehicle_id' => $vehicle->id,
+            'carrier_id' => $carrier->id,
+            'summary' => 'Duplicate match',
+        ])
+        ->assertSessionHasErrors('vehicle_id');
+
+    $this->actingAs($dispatcher)
+        ->post(route('dispatcher.connections.store'), [
+            'load_id' => $load->id,
+            'vehicle_id' => $badVehicle->id,
+            'carrier_id' => $badCarrier->id,
+            'summary' => 'Bad match',
+        ])
+        ->assertSessionHasErrors('vehicle_id');
+
+    expect(DispatcherConnection::count())->toBe(1);
 
     $this->actingAs($dispatcher)
         ->get(route('dispatcher.loads.nearest-carriers', [
@@ -1535,6 +1571,13 @@ it('allows dispatcher connections without changing load status automatically', f
             ->where('auditLogs.0.new_values_json.internal_comment', 'Carrier responded and connection is closed.')
             ->where('auditLogs.1.action', 'dispatcher_connection.created')
         );
+
+    $this->actingAs($dispatcher)
+        ->patch(route('dispatcher.connections.update', $connection), [
+            'status' => 'contacted',
+            'internal_comment' => 'Trying to reopen closed connection.',
+        ])
+        ->assertSessionHasErrors('status');
 });
 
 it('enforces dispatcher and admin permissions', function () {

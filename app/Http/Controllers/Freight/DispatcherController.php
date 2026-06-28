@@ -8,17 +8,32 @@ use App\Models\Complaint;
 use App\Models\DispatcherConnection;
 use App\Models\FreightLoad;
 use App\Models\FreightNotification;
+use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\AuditLogService;
 use App\Services\DistanceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class DispatcherController extends Controller
 {
+    private const OPEN_CONNECTION_STATUSES = ['draft', 'proposed', 'contacted', 'connected'];
+
+    private const CONNECTION_TRANSITIONS = [
+        'draft' => ['proposed', 'cancelled'],
+        'proposed' => ['contacted', 'declined', 'no_answer', 'cancelled', 'closed'],
+        'contacted' => ['connected', 'declined', 'no_answer', 'cancelled', 'closed'],
+        'connected' => ['closed', 'cancelled'],
+        'declined' => [],
+        'no_answer' => [],
+        'cancelled' => [],
+        'closed' => [],
+    ];
+
     public function index(Request $request): Response
     {
         Gate::authorize('viewAny', DispatcherConnection::class);
@@ -141,8 +156,32 @@ class DispatcherController extends Controller
 
         $load = FreightLoad::with('company')->findOrFail($data['load_id']);
         Gate::authorize('dispatch', $load);
-        $vehicle = ! empty($data['vehicle_id']) ? Vehicle::with('company')->findOrFail($data['vehicle_id']) : null;
+        $vehicle = ! empty($data['vehicle_id']) ? Vehicle::with(['company', 'carrier'])->findOrFail($data['vehicle_id']) : null;
         $carrierId = $data['carrier_id'] ?? $vehicle?->carrier_id;
+
+        if (! $carrierId) {
+            throw ValidationException::withMessages([
+                'carrier_id' => 'Укажите перевозчика или транспорт для диспетчерского соединения.',
+            ]);
+        }
+
+        if (! User::query()->whereKey($carrierId)->where('role', 'carrier')->exists()) {
+            throw ValidationException::withMessages([
+                'carrier_id' => 'Для соединения можно выбрать только пользователя с ролью перевозчика.',
+            ]);
+        }
+
+        if ($vehicle) {
+            if ((int) $vehicle->carrier_id !== (int) $carrierId) {
+                throw ValidationException::withMessages([
+                    'vehicle_id' => 'Выбранный транспорт не принадлежит указанному перевозчику.',
+                ]);
+            }
+
+            $this->ensureVehicleCanBeMatched($vehicle, $load);
+        }
+
+        $this->ensureNoOpenConnectionDuplicate($load, (int) $carrierId, $vehicle?->id);
 
         $connection = DispatcherConnection::create([
             ...$data,
@@ -187,11 +226,16 @@ class DispatcherController extends Controller
             'internal_comment' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        $this->ensureConnectionStatusCanChange($connection, $data['status']);
+
         $old = $connection->only(['status', 'internal_comment']);
         $dates = match ($data['status']) {
-            'contacted' => ['shipper_contacted_at' => now(), 'carrier_contacted_at' => now()],
-            'connected' => ['connected_at' => now()],
-            'closed' => ['closed_at' => now()],
+            'contacted' => [
+                'shipper_contacted_at' => $connection->shipper_contacted_at ?? now(),
+                'carrier_contacted_at' => $connection->carrier_contacted_at ?? now(),
+            ],
+            'connected' => ['connected_at' => $connection->connected_at ?? now()],
+            'closed' => ['closed_at' => $connection->closed_at ?? now()],
             default => [],
         };
 
@@ -199,6 +243,53 @@ class DispatcherController extends Controller
         $audit->record('dispatcher_connection.updated', $connection, $old, $connection->only(['status', 'internal_comment']));
 
         return back()->with('status', 'Статус соединения обновлен.');
+    }
+
+    private function ensureVehicleCanBeMatched(Vehicle $vehicle, FreightLoad $load): void
+    {
+        $errors = $vehicle->compatibilityErrorsForLoad($load);
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages([
+                'vehicle_id' => implode(' ', $errors),
+            ]);
+        }
+    }
+
+    private function ensureNoOpenConnectionDuplicate(FreightLoad $load, int $carrierId, ?int $vehicleId): void
+    {
+        $duplicate = DispatcherConnection::query()
+            ->where('load_id', $load->id)
+            ->whereIn('status', self::OPEN_CONNECTION_STATUSES)
+            ->where(function ($query) use ($carrierId, $vehicleId) {
+                $query->where('carrier_id', $carrierId);
+
+                if ($vehicleId) {
+                    $query->orWhere('vehicle_id', $vehicleId);
+                }
+            })
+            ->exists();
+
+        if ($duplicate) {
+            throw ValidationException::withMessages([
+                'vehicle_id' => 'По этому грузу уже есть активное диспетчерское соединение с выбранным перевозчиком или транспортом.',
+            ]);
+        }
+    }
+
+    private function ensureConnectionStatusCanChange(DispatcherConnection $connection, string $nextStatus): void
+    {
+        if ($nextStatus === $connection->status) {
+            return;
+        }
+
+        $allowed = self::CONNECTION_TRANSITIONS[$connection->status] ?? [];
+
+        if (! in_array($nextStatus, $allowed, true)) {
+            throw ValidationException::withMessages([
+                'status' => 'Недопустимый переход статуса диспетчерского соединения.',
+            ]);
+        }
     }
 
     private function dispatcherLoadPayload(FreightLoad $load): array
