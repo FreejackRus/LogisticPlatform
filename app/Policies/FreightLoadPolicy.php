@@ -56,6 +56,7 @@ class FreightLoadPolicy
     public function respond(User $user, FreightLoad $load): bool
     {
         return $user->isCarrier()
+            && $user->canManageCarrierFleet()
             && $load->status === 'active'
             && $load->shipper_id !== $user->id;
     }

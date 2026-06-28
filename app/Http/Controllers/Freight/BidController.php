@@ -83,8 +83,17 @@ class BidController extends Controller
             : null;
         unset($data['carrier_cargo_photo']);
 
+        $companyId = $user->activeCarrierCompany()?->id;
         $existingBid = Bid::where('load_id', $load->id)
-            ->where('carrier_id', $user->id)
+            ->where(function ($query) use ($user, $companyId) {
+                if ($companyId) {
+                    $query->where('company_id', $companyId);
+
+                    return;
+                }
+
+                $query->where('carrier_id', $user->id);
+            })
             ->first();
 
         abort_if($existingBid && in_array($existingBid->status, ['pending', 'accepted'], true), 422, 'У вас уже есть активный отклик на этот груз.');
@@ -94,7 +103,7 @@ class BidController extends Controller
             'carrier_id' => $user->id,
         ], [
             ...$data,
-            'company_id' => $user->activeCarrierCompany()?->id,
+            'company_id' => $companyId,
             'price_currency' => 'RUB',
             'status' => 'pending',
             'contract_accepted_at' => $contractAccepted ? now() : null,

@@ -631,6 +631,14 @@ it('shows carrier bid workspace by fleet role', function () {
             ->where('statusCounts.pending', 1)
         );
 
+    $this->actingAs($manager)
+        ->post(route('bids.store', $load), [
+            'vehicle_id' => $vehicle->id,
+            'comment' => 'Duplicate company response.',
+            'contract_accepted' => true,
+        ])
+        ->assertStatus(422);
+
     $this->actingAs($driver)
         ->get(route('bids.mine', ['status' => 'pending']))
         ->assertOk()
@@ -640,6 +648,21 @@ it('shows carrier bid workspace by fleet role', function () {
             ->where('bids.data.0.id', $companyBid->id)
             ->has('bids.data', 1)
         );
+
+    $this->actingAs($driver)
+        ->get(route('loads.show', $load))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('canBid', false)
+        );
+
+    $this->actingAs($driver)
+        ->post(route('bids.store', $load), [
+            'vehicle_id' => $vehicle->id,
+            'comment' => 'Driver should not respond for the company.',
+            'contract_accepted' => true,
+        ])
+        ->assertForbidden();
 
     $this->actingAs($owner)
         ->patch(route('bids.cancel', $companyBid))
