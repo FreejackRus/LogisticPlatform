@@ -445,6 +445,105 @@ it('prevents admins from marking vehicles with active deliveries as available', 
         ->and($vehicle->current_city)->toBe('Kazan');
 });
 
+it('keeps admin load moderation inside the delivery workflow', function () {
+    $admin = freightUser('admin', ['email' => 'admin-load-workflow@example.com']);
+    $shipper = freightUser('shipper', ['email' => 'admin-load-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $carrier = freightUser('carrier', ['email' => 'admin-load-carrier@example.com']);
+    $carrierCompany = freightCompany($carrier, 'carrier');
+
+    $draftLoad = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Admin draft load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'draft',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.loads.update', $draftLoad), [
+            'status' => 'in_progress',
+        ])
+        ->assertSessionHasErrors('status');
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.loads.update', $draftLoad), [
+            'status' => 'completed',
+        ])
+        ->assertSessionHasErrors('status');
+
+    $activeLoad = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Admin active load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Samara',
+        'status' => 'active',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.loads.update', $activeLoad), [
+            'status' => 'archived',
+        ])
+        ->assertRedirect();
+
+    expect($activeLoad->refresh()->status)->toBe('archived');
+
+    $earlyLoad = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Admin early delivery',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'in_progress',
+        'delivery_stage' => 'carrier_selected',
+    ]);
+
+    $earlyVehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Early delivery truck',
+        'is_available' => false,
+    ]);
+
+    Bid::create([
+        'load_id' => $earlyLoad->id,
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'vehicle_id' => $earlyVehicle->id,
+        'status' => 'accepted',
+        'accepted_at' => now(),
+        'contract_accepted_at' => now(),
+        'contract_signed_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.loads.update', $earlyLoad), [
+            'status' => 'cancelled',
+        ])
+        ->assertRedirect();
+
+    expect($earlyLoad->refresh()->status)->toBe('cancelled')
+        ->and($earlyVehicle->refresh()->is_available)->toBeTrue();
+
+    $loadedLoad = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Admin loaded delivery',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'in_progress',
+        'delivery_stage' => 'loaded',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.loads.update', $loadedLoad), [
+            'status' => 'cancelled',
+        ])
+        ->assertSessionHasErrors('status');
+});
+
 it('allows carrier fleet roles to build accepted load route only for their delivery', function () {
     Http::fake([
         'router.project-osrm.org/route/v1/driving/*' => Http::response([

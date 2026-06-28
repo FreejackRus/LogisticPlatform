@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\Complaint;
+use App\Models\DeliveryEvent;
 use App\Models\DispatcherConnection;
 use App\Models\FreightLoad;
 use App\Models\User;
@@ -221,15 +222,22 @@ class AdminController extends Controller
             'is_featured' => ['nullable', 'boolean'],
         ]);
 
+        $this->ensureAdminCanSetLoadStatus($load, $data['status'] ?? null);
+
         $old = $load->only(['status', 'is_urgent', 'is_featured']);
         $dates = match ($data['status'] ?? null) {
             'active' => ['published_at' => $load->published_at ?? now(), 'cancelled_at' => null],
-            'completed' => ['completed_at' => $load->completed_at ?? now()],
             'cancelled' => ['cancelled_at' => $load->cancelled_at ?? now()],
             default => [],
         };
 
         $load->update([...$data, ...$dates]);
+
+        if (($data['status'] ?? null) === 'cancelled') {
+            $load->loadMissing('bids.vehicle');
+            $this->releaseAcceptedVehicles($load);
+        }
+
         $audit->record('load.moderated', $load, $old, $load->only(['status', 'is_urgent', 'is_featured']));
 
         return back()->with('status', 'Груз обновлен.');
@@ -335,5 +343,68 @@ class AdminController extends Controller
             ->orderByDesc('id')
             ->limit(50)
             ->get();
+    }
+
+    private function ensureAdminCanSetLoadStatus(FreightLoad $load, ?string $status): void
+    {
+        if (! $status || $status === $load->status) {
+            return;
+        }
+
+        $hasAcceptedBid = $load->bids()->where('status', 'accepted')->exists();
+
+        if ($status === 'in_progress') {
+            throw ValidationException::withMessages([
+                'status' => 'Груз переводится в работу только через выбор принятого отклика.',
+            ]);
+        }
+
+        if ($status === 'completed') {
+            throw ValidationException::withMessages([
+                'status' => 'Груз завершается только через подтверждение доставки QR/кодом.',
+            ]);
+        }
+
+        if ($status === 'active' && (! in_array($load->status, ['draft', 'cancelled'], true) || $hasAcceptedBid)) {
+            throw ValidationException::withMessages([
+                'status' => 'Опубликовать можно только черновик или отмененный груз без выбранного перевозчика.',
+            ]);
+        }
+
+        if ($status === 'draft' && (! in_array($load->status, ['draft', 'active', 'cancelled'], true) || $hasAcceptedBid)) {
+            throw ValidationException::withMessages([
+                'status' => 'Вернуть в черновик можно только груз без выбранного перевозчика.',
+            ]);
+        }
+
+        if ($status === 'cancelled') {
+            if (in_array($load->status, ['completed', 'archived'], true)) {
+                throw ValidationException::withMessages([
+                    'status' => 'Завершенный или архивный груз нельзя отменить.',
+                ]);
+            }
+
+            if ($load->status === 'in_progress' && ! DeliveryEvent::canCancelDelivery($load->delivery_stage)) {
+                throw ValidationException::withMessages([
+                    'status' => 'Груз в работе можно отменить только до фактической погрузки.',
+                ]);
+            }
+        }
+
+        if ($status === 'archived' && $load->status === 'in_progress') {
+            throw ValidationException::withMessages([
+                'status' => 'Активную перевозку нельзя архивировать до отмены или завершения.',
+            ]);
+        }
+    }
+
+    private function releaseAcceptedVehicles(FreightLoad $load): void
+    {
+        $load->bids
+            ->where('status', 'accepted')
+            ->pluck('vehicle')
+            ->filter()
+            ->unique('id')
+            ->each(fn (Vehicle $vehicle) => $vehicle->update(['is_available' => true]));
     }
 }
