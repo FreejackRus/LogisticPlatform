@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -64,15 +65,15 @@ class BidController extends Controller
         Gate::authorize('respond', $load);
 
         $data = $request->validate([
-            'vehicle_id' => ['nullable', 'exists:vehicles,id'],
+            'vehicle_id' => ['required', 'exists:vehicles,id'],
             'comment' => ['nullable', 'string', 'max:2000'],
             'contract_accepted' => ['accepted'],
             'carrier_cargo_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ]);
 
-        if (! empty($data['vehicle_id'])) {
-            Gate::authorize('useForBid', Vehicle::findOrFail($data['vehicle_id']));
-        }
+        $vehicle = Vehicle::findOrFail($data['vehicle_id']);
+        Gate::authorize('useForBid', $vehicle);
+        $this->ensureVehicleCanServeLoad($vehicle, $load);
 
         $contractAccepted = $data['contract_accepted'] ?? false;
         unset($data['contract_accepted']);
@@ -159,6 +160,16 @@ class BidController extends Controller
         Gate::authorize('accept', $bid);
 
         DB::transaction(function () use ($request, $bid, $audit) {
+            $vehicle = $bid->vehicle;
+
+            if (! $vehicle) {
+                throw ValidationException::withMessages([
+                    'vehicle_id' => 'Для выбора перевозчика необходимо указать транспорт.',
+                ]);
+            }
+
+            $this->ensureVehicleCanServeLoad($vehicle, $bid->freightLoad);
+
             $rejectedBids = $bid->freightLoad->bids()
                 ->with('vehicle.assignedDriver')
                 ->whereKeyNot($bid->id)
@@ -180,7 +191,9 @@ class BidController extends Controller
             $bid->freightLoad->update([
                 'status' => 'in_progress',
                 'delivery_stage' => 'carrier_selected',
+                'bids_count' => 1,
             ]);
+            $vehicle->update(['is_available' => false]);
 
             DeliveryEvent::create([
                 'load_id' => $bid->load_id,
@@ -244,6 +257,17 @@ class BidController extends Controller
         ]);
 
         return back()->with('status', 'Отклик отменен.');
+    }
+
+    private function ensureVehicleCanServeLoad(Vehicle $vehicle, FreightLoad $load): void
+    {
+        $errors = $vehicle->compatibilityErrorsForLoad($load);
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages([
+                'vehicle_id' => implode(' ', $errors),
+            ]);
+        }
     }
 
     public function uploadCarrierCargoPhoto(Request $request, Bid $bid, FreightMediaService $media): RedirectResponse

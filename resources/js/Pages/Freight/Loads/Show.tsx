@@ -420,6 +420,7 @@ export default function Show({
                                 value={data.vehicle_id}
                                 onChange={(event) => setData('vehicle_id', event.target.value)}
                                 className="rounded-md border bg-background px-3 py-2 text-sm"
+                                required
                             >
                                 <option value="">{t('common.transport')}</option>
                                 {carrierVehicles.map((vehicle) => (
@@ -429,7 +430,7 @@ export default function Show({
                                 ))}
                             </select>
                             <Input value={data.comment} onChange={(event) => setData('comment', event.target.value)} placeholder={t('loads.response_comment')} />
-                            <Button disabled={processing}>{t('loads.respond')}</Button>
+                            <Button disabled={processing || !data.vehicle_id}>{t('loads.respond')}</Button>
                             <div className="grid gap-2 md:col-span-3">
                                 <label className="flex items-start gap-2 text-sm">
                                     <input
@@ -445,6 +446,7 @@ export default function Show({
                                     accept="image/*"
                                     onChange={(event) => setData('carrier_cargo_photo', event.target.files?.[0] ?? null)}
                                 />
+                                {errors.vehicle_id && <p className="text-sm text-destructive">{errors.vehicle_id}</p>}
                                 {errors.contract_accepted && <p className="text-sm text-destructive">{errors.contract_accepted}</p>}
                                 {errors.carrier_cargo_photo && <p className="text-sm text-destructive">{errors.carrier_cargo_photo}</p>}
                             </div>

@@ -278,7 +278,7 @@ class LoadController extends Controller
                 ? route('map', ['load_id' => $load->id, 'route' => 1])
                 : null,
             'carrierVehicles' => $request->user()?->isCarrier()
-                ? $this->carrierVehiclesForBid($request->user())
+                ? $this->carrierVehiclesForBid($request->user(), $load)
                 : [],
         ]);
     }
@@ -368,6 +368,7 @@ class LoadController extends Controller
 
         $load->update(['status' => 'cancelled', 'cancelled_at' => now()]);
         $load->load('bids.vehicle');
+        $this->releaseAcceptedVehicles($load);
         $this->notifyAcceptedBidUsers($load, 'load_cancelled', 'Груз отменён', 'Заказчик отменил груз '.$load->title.'.');
 
         return back()->with('status', 'Груз отменен.');
@@ -405,6 +406,7 @@ class LoadController extends Controller
         ]);
 
         $load->load('bids.vehicle');
+        $this->releaseAcceptedVehicles($load);
         $this->notifyAcceptedBidUsers($load, 'load_completed', 'Доставка подтверждена', 'Заказчик подтвердил завершение доставки по грузу '.$load->title.'.');
 
         return back()->with('status', 'Груз завершен.');
@@ -893,10 +895,10 @@ class LoadController extends Controller
             );
     }
 
-    private function carrierVehiclesForBid(User $user)
+    private function carrierVehiclesForBid(User $user, FreightLoad $load)
     {
         return Vehicle::query()
-            ->where('is_available', true)
+            ->eligibleForLoad($load)
             ->where(function ($query) use ($user) {
                 if ($user->isCarrierCompanyDriver()) {
                     $query->where('carrier_id', $user->id)
@@ -913,6 +915,16 @@ class LoadController extends Controller
             })
             ->orderBy('title')
             ->get(['id', 'title', 'registration_number']);
+    }
+
+    private function releaseAcceptedVehicles(FreightLoad $load): void
+    {
+        $load->bids
+            ->where('status', 'accepted')
+            ->pluck('vehicle')
+            ->filter()
+            ->unique('id')
+            ->each(fn (Vehicle $vehicle) => $vehicle->update(['is_available' => true]));
     }
 
     private function formatDate($date): ?string

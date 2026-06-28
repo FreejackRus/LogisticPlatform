@@ -884,6 +884,129 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         ->and(DeliveryEvent::where('load_id', $load->id)->where('type', 'delivery_confirmed')->exists())->toBeTrue();
 });
 
+it('enforces vehicle eligibility for carrier responses and releases vehicles after delivery', function () {
+    $shipper = freightUser('shipper', ['email' => 'eligibility-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $carrier = freightUser('carrier', ['email' => 'eligibility-carrier@example.com']);
+    $carrierCompany = freightCompany($carrier, 'carrier');
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Eligible load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'loading_date' => '2026-07-10',
+        'unloading_date' => '2026-07-12',
+        'body_type' => 'tent',
+        'weight_kg' => 10000,
+        'volume_m3' => 40,
+        'delivery_confirmation_token' => 'eligibility-token',
+        'delivery_confirmation_code' => '654321',
+        'status' => 'active',
+    ]);
+
+    $wrongBodyVehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Reefer wrong body',
+        'body_type' => 'refrigerator',
+        'capacity_kg' => 20000,
+        'volume_m3' => 80,
+        'is_available' => true,
+    ]);
+
+    $smallVehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Small tent',
+        'body_type' => 'tent',
+        'capacity_kg' => 5000,
+        'volume_m3' => 30,
+        'is_available' => true,
+    ]);
+
+    $eligibleVehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Eligible tent',
+        'body_type' => 'tent',
+        'capacity_kg' => 20000,
+        'volume_m3' => 82,
+        'available_from_date' => '2026-07-01',
+        'available_until_date' => '2026-07-20',
+        'is_available' => true,
+    ]);
+
+    $this->actingAs($carrier)
+        ->get(route('loads.show', $load))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('carrierVehicles.0.id', $eligibleVehicle->id)
+            ->has('carrierVehicles', 1)
+        );
+
+    $this->actingAs($carrier)
+        ->post(route('bids.store', $load), [
+            'vehicle_id' => $wrongBodyVehicle->id,
+            'contract_accepted' => true,
+        ])
+        ->assertSessionHasErrors('vehicle_id');
+
+    $this->actingAs($carrier)
+        ->post(route('bids.store', $load), [
+            'vehicle_id' => $smallVehicle->id,
+            'contract_accepted' => true,
+        ])
+        ->assertSessionHasErrors('vehicle_id');
+
+    $this->actingAs($carrier)
+        ->post(route('bids.store', $load), [
+            'vehicle_id' => $eligibleVehicle->id,
+            'comment' => 'Vehicle fits the load.',
+            'contract_accepted' => true,
+        ])
+        ->assertRedirect();
+
+    $bid = Bid::where('vehicle_id', $eligibleVehicle->id)->firstOrFail();
+
+    $this->actingAs($shipper)
+        ->patch(route('bids.accept', $bid))
+        ->assertRedirect();
+
+    expect($eligibleVehicle->refresh()->is_available)->toBeFalse()
+        ->and($load->refresh()->status)->toBe('in_progress')
+        ->and($load->bids_count)->toBe(1);
+
+    $secondLoad = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Second active load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Samara',
+        'body_type' => 'tent',
+        'weight_kg' => 15000,
+        'volume_m3' => 60,
+        'status' => 'active',
+    ]);
+
+    $this->actingAs($carrier)
+        ->get(route('loads.show', $secondLoad))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('carrierVehicles', 0)
+        );
+
+    $this->actingAs($shipper)
+        ->patch(route('loads.complete', $load), [
+            'delivery_confirmation' => '654321',
+        ])
+        ->assertRedirect();
+
+    expect($eligibleVehicle->refresh()->is_available)->toBeTrue()
+        ->and($load->refresh()->status)->toBe('completed');
+});
+
 it('allows dispatcher connections without changing load status automatically', function () {
     $dispatcher = freightUser('dispatcher');
     $shipper = freightUser('shipper');

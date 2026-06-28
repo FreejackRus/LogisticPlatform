@@ -97,4 +97,91 @@ class Vehicle extends Model
             ->whereNotNull('current_lat')
             ->whereNotNull('current_lng');
     }
+
+    public function scopeEligibleForLoad(Builder $query, FreightLoad $load): Builder
+    {
+        $query
+            ->where('is_available', true)
+            ->whereDoesntHave('bids', fn (Builder $bidQuery) => $bidQuery
+                ->where('status', 'accepted')
+                ->whereHas('freightLoad', fn (Builder $loadQuery) => $loadQuery
+                    ->where('status', 'in_progress')
+                    ->whereKeyNot($load->id)
+                )
+            );
+
+        if ($load->body_type) {
+            $query->where('body_type', $load->body_type);
+        }
+
+        if ($load->weight_kg) {
+            $query->whereNotNull('capacity_kg')->where('capacity_kg', '>=', $load->weight_kg);
+        }
+
+        if ($load->volume_m3) {
+            $query->whereNotNull('volume_m3')->where('volume_m3', '>=', $load->volume_m3);
+        }
+
+        if ($load->loading_date) {
+            $query->where(fn (Builder $dateQuery) => $dateQuery
+                ->whereNull('available_from_date')
+                ->orWhereDate('available_from_date', '<=', $load->loading_date)
+            );
+        }
+
+        if ($load->unloading_date ?: $load->loading_date) {
+            $finishDate = $load->unloading_date ?: $load->loading_date;
+
+            $query->where(fn (Builder $dateQuery) => $dateQuery
+                ->whereNull('available_until_date')
+                ->orWhereDate('available_until_date', '>=', $finishDate)
+            );
+        }
+
+        return $query;
+    }
+
+    public function compatibilityErrorsForLoad(FreightLoad $load): array
+    {
+        $errors = [];
+
+        if (! $this->is_available) {
+            $errors[] = 'Транспорт сейчас не отмечен как доступный.';
+        }
+
+        $hasActiveDelivery = $this->bids()
+            ->where('status', 'accepted')
+            ->whereHas('freightLoad', fn (Builder $query) => $query
+                ->where('status', 'in_progress')
+                ->whereKeyNot($load->id)
+            )
+            ->exists();
+
+        if ($hasActiveDelivery) {
+            $errors[] = 'Транспорт уже назначен на активную перевозку.';
+        }
+
+        if ($load->body_type && $this->body_type !== $load->body_type) {
+            $errors[] = 'Тип кузова транспорта не подходит для груза.';
+        }
+
+        if ($load->weight_kg && (! $this->capacity_kg || $this->capacity_kg < $load->weight_kg)) {
+            $errors[] = 'Грузоподъемность транспорта меньше веса груза.';
+        }
+
+        if ($load->volume_m3 && (! $this->volume_m3 || (float) $this->volume_m3 < (float) $load->volume_m3)) {
+            $errors[] = 'Объем кузова меньше объема груза.';
+        }
+
+        if ($load->loading_date && $this->available_from_date && $this->available_from_date->gt($load->loading_date)) {
+            $errors[] = 'Транспорт будет доступен позже даты погрузки.';
+        }
+
+        $finishDate = $load->unloading_date ?: $load->loading_date;
+        if ($finishDate && $this->available_until_date && $this->available_until_date->lt($finishDate)) {
+            $errors[] = 'Период доступности транспорта заканчивается раньше завершения рейса.';
+        }
+
+        return $errors;
+    }
 }
