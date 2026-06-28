@@ -469,6 +469,104 @@ it('allows carrier fleet roles to build accepted load route only for their deliv
         ->assertForbidden();
 });
 
+it('limits delivery operations to the assigned driver when a fleet vehicle has one', function () {
+    Storage::fake('public');
+
+    $shipper = freightUser('shipper', ['email' => 'driver-ops-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $owner = freightUser('carrier', ['email' => 'driver-ops-owner@example.com']);
+    $manager = freightUser('carrier', ['email' => 'driver-ops-manager@example.com']);
+    $driver = freightUser('carrier', ['email' => 'driver-ops-driver@example.com']);
+
+    $company = freightCompany($owner, 'carrier');
+    $company->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $company->carrierMembers()->syncWithoutDetaching([
+        $manager->id => ['role' => 'manager', 'status' => 'active', 'joined_at' => now()],
+        $driver->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
+    ]);
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Driver operated load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'delivery_confirmation_token' => 'driver-ops-token',
+        'delivery_confirmation_code' => '111222',
+        'status' => 'in_progress',
+        'delivery_stage' => 'carrier_selected',
+    ]);
+
+    $vehicle = Vehicle::create([
+        'carrier_id' => $owner->id,
+        'assigned_driver_id' => $driver->id,
+        'company_id' => $company->id,
+        'title' => 'Driver operated truck',
+        'is_available' => false,
+    ]);
+
+    $bid = Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $owner->id,
+        'company_id' => $company->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'accepted',
+        'accepted_at' => now(),
+        'contract_accepted_at' => now(),
+        'contract_signed_at' => now(),
+    ]);
+
+    foreach ([$owner, $manager] as $observer) {
+        $this->actingAs($observer)
+            ->get(route('carrier.deliveries.show', $bid))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('delivery.can_update_delivery', false)
+                ->where('delivery.can_upload_carrier_cargo_photo', false)
+                ->has('delivery.delivery_event_options', 0)
+            );
+
+        $this->actingAs($observer)
+            ->post(route('loads.delivery-events.store', $load), [
+                'type' => 'en_route_to_pickup',
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($observer)
+            ->post(route('bids.carrier-photo', $bid), [
+                'carrier_cargo_photo' => UploadedFile::fake()->image('observer-photo.jpg', 900, 600),
+            ])
+            ->assertForbidden();
+    }
+
+    $this->actingAs($driver)
+        ->get(route('carrier.deliveries.show', $bid))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('delivery.can_update_delivery', true)
+            ->where('delivery.can_upload_carrier_cargo_photo', true)
+            ->where('delivery.delivery_event_options.0', 'en_route_to_pickup')
+        );
+
+    $this->actingAs($driver)
+        ->post(route('loads.delivery-events.store', $load), [
+            'type' => 'en_route_to_pickup',
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($driver)
+        ->post(route('bids.carrier-photo', $bid), [
+            'carrier_cargo_photo' => UploadedFile::fake()->image('driver-photo.jpg', 900, 600),
+        ])
+        ->assertRedirect();
+
+    expect($load->refresh()->delivery_stage)->toBe('en_route_to_pickup')
+        ->and($bid->refresh()->carrier_cargo_photo_path)->toStartWith('bid-cargo/');
+});
+
 it('shows carrier bid workspace by fleet role', function () {
     $shipper = freightUser('shipper', ['email' => 'bid-shipper@example.com']);
     $shipperCompany = freightCompany($shipper, 'shipper');

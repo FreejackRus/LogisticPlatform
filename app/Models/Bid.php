@@ -60,4 +60,13 @@ class Bid extends Model
     {
         return $this->belongsTo(Vehicle::class);
     }
+
+    public function canBeOperatedBy(User $user): bool
+    {
+        if ($this->vehicle?->assigned_driver_id) {
+            return $this->vehicle->assigned_driver_id === $user->id;
+        }
+
+        return $this->carrier_id === $user->id;
+    }
 }

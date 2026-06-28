@@ -58,7 +58,7 @@ class DeliveryEventController extends Controller
 
     private function allowedTypes(User $user, FreightLoad $load, Bid $bid): array
     {
-        if ($user->id === $bid->carrier_id || $user->id === $bid->vehicle?->assigned_driver_id) {
+        if ($bid->canBeOperatedBy($user)) {
             return DeliveryEvent::carrierAvailableEventTypes($load->delivery_stage);
         }
 

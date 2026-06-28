@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Freight;
 use App\Http\Controllers\Controller;
 use App\Models\Bid;
 use App\Models\DeliveryEvent;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -36,7 +37,7 @@ class CarrierDeliveryController extends Controller
             ->latest();
 
         return Inertia::render('Freight/Carrier/Deliveries', [
-            'deliveries' => $query->get()->map(fn (Bid $bid) => $this->deliveryPayload($bid)),
+            'deliveries' => $query->get()->map(fn (Bid $bid) => $this->deliveryPayload($bid, $request->user())),
             'filters' => ['status' => $filter],
             'stats' => [
                 'active' => $this->countByLoadStatus($request, ['in_progress']),
@@ -58,14 +59,17 @@ class CarrierDeliveryController extends Controller
         abort_unless(in_array($bid->freightLoad?->status, ['in_progress', 'completed'], true), 404);
 
         return Inertia::render('Freight/Carrier/DeliveryShow', [
-            'delivery' => $this->deliveryPayload($bid),
+            'delivery' => $this->deliveryPayload($bid, $request->user()),
         ]);
     }
 
-    private function deliveryPayload(Bid $bid): array
+    private function deliveryPayload(Bid $bid, ?User $user): array
     {
         $load = $bid->freightLoad;
         $latestEvent = $load->deliveryEvents->sortByDesc('id')->first();
+        $canOperateDelivery = $user
+            && $load->status === 'in_progress'
+            && $bid->canBeOperatedBy($user);
 
         return [
             'bid_id' => $bid->id,
@@ -107,7 +111,7 @@ class CarrierDeliveryController extends Controller
                 'contract_url' => route('loads.contract', $load),
                 'route_url' => route('map', ['load_id' => $load->id, 'route' => 1]),
                 'event_url' => route('loads.delivery-events.store', $load),
-                'next_delivery_event' => $load->status === 'in_progress'
+                'next_delivery_event' => $canOperateDelivery
                     ? DeliveryEvent::nextCarrierEvent($load->delivery_stage)
                     : null,
             ],
@@ -123,10 +127,12 @@ class CarrierDeliveryController extends Controller
             ] : null,
             'carrier_cargo_photo_url' => $this->publicUrl($bid->carrier_cargo_photo_path),
             'carrier_photo_url' => route('bids.carrier-photo', $bid),
-            'delivery_event_options' => $load->status === 'in_progress'
+            'can_update_delivery' => (bool) $canOperateDelivery,
+            'can_upload_carrier_cargo_photo' => (bool) $canOperateDelivery,
+            'delivery_event_options' => $canOperateDelivery
                 ? DeliveryEvent::carrierAvailableEventTypes($load->delivery_stage)
                 : [],
-            'next_delivery_event' => $load->status === 'in_progress'
+            'next_delivery_event' => $canOperateDelivery
                 ? DeliveryEvent::nextCarrierEvent($load->delivery_stage)
                 : null,
             'latest_event' => $latestEvent ? [

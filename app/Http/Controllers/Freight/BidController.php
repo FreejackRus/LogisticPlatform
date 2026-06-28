@@ -276,7 +276,8 @@ class BidController extends Controller
 
         abort_unless(
             $bid->status === 'accepted'
-                && ($request->user()?->id === $bid->carrier_id || $request->user()?->id === $bid->vehicle?->assigned_driver_id),
+                && $request->user()
+                && $bid->canBeOperatedBy($request->user()),
             403,
         );
 

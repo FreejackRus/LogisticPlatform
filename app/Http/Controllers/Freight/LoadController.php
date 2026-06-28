@@ -750,7 +750,7 @@ class LoadController extends Controller
                 || $load->bids->contains(fn ($bid) => ($bid->carrier_id === $user->id || $bid->vehicle?->assigned_driver_id === $user->id) && $bid->status === 'accepted'));
         $canCarrierUpdateDelivery = $user
             && $acceptedBid
-            && ($user->id === $acceptedBid->carrier_id || $user->id === $acceptedBid->vehicle?->assigned_driver_id)
+            && $acceptedBid->canBeOperatedBy($user)
             && $load->status === 'in_progress';
         $canStaffUpdateDelivery = $user
             && $acceptedBid
@@ -818,7 +818,8 @@ class LoadController extends Controller
                 'contract_accepted_at' => $this->formatDateTime($bid->contract_accepted_at),
                 'contract_signed_at' => $this->formatDateTime($bid->contract_signed_at),
                 'carrier_cargo_photo_url' => $this->publicUrl($bid->carrier_cargo_photo_path),
-                'can_upload_carrier_cargo_photo' => $user?->id === $bid->carrier_id
+                'can_upload_carrier_cargo_photo' => $user
+                    && $bid->canBeOperatedBy($user)
                     && $bid->status === 'accepted'
                     && $load->status === 'in_progress',
             ])->values(),

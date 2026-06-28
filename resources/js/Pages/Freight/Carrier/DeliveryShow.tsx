@@ -64,6 +64,8 @@ type Delivery = {
     } | null;
     carrier_cargo_photo_url?: string | null;
     carrier_photo_url: string;
+    can_update_delivery: boolean;
+    can_upload_carrier_cargo_photo: boolean;
     delivery_event_options: string[];
     next_delivery_event?: string | null;
     latest_event?: DeliveryEvent | null;
@@ -253,7 +255,7 @@ export default function DeliveryShow({ delivery }: Props) {
                     </section>
                 )}
 
-                {delivery.load.status === 'in_progress' && delivery.delivery_event_options.length > 0 && (
+                {delivery.can_update_delivery && delivery.delivery_event_options.length > 0 && (
                     <form onSubmit={submitEvent} className="grid gap-3 rounded-md border p-4">
                         {delivery.next_delivery_event && (
                             <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted p-3">
@@ -324,7 +326,7 @@ export default function DeliveryShow({ delivery }: Props) {
                         ) : (
                             <p className="mt-2 text-sm text-muted-foreground">{t('carrier_deliveries.carrier_photo_empty')}</p>
                         )}
-                        {delivery.load.status === 'in_progress' && (
+                        {delivery.can_upload_carrier_cargo_photo && (
                             <form onSubmit={submitPhoto} className="mt-3 flex flex-col gap-2 sm:flex-row">
                                 <Input
                                     type="file"
