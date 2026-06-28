@@ -118,7 +118,7 @@ class MapController extends Controller
         $bid = $load->bids()
             ->where('status', 'accepted')
             ->with('vehicle')
-            ->when($user->isCarrier(), fn ($query) => $query->where('carrier_id', $user->id))
+            ->when($user->isCarrier(), fn ($query) => $this->scopeAcceptedBidForCarrier($query, $user))
             ->first();
 
         abort_unless($bid && ($user->isCarrier() || $user->isDispatcher() || $user->isAdmin()), 403);
@@ -254,6 +254,26 @@ class MapController extends Controller
             $query->where(function ($query) use ($user) {
                 $query->where('carrier_id', $user->id)
                     ->orWhere('assigned_driver_id', $user->id);
+            });
+
+            return;
+        }
+
+        $query->where(function ($query) use ($user) {
+            $query->where('carrier_id', $user->id);
+
+            if ($companyId = $user->activeCarrierCompany()?->id) {
+                $query->orWhere('company_id', $companyId);
+            }
+        });
+    }
+
+    private function scopeAcceptedBidForCarrier($query, $user): void
+    {
+        if ($user->isCarrierCompanyDriver()) {
+            $query->where(function ($query) use ($user) {
+                $query->where('carrier_id', $user->id)
+                    ->orWhereHas('vehicle', fn ($vehicle) => $vehicle->where('assigned_driver_id', $user->id));
             });
 
             return;

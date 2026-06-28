@@ -389,6 +389,86 @@ it('separates carrier fleet managers from company drivers', function () {
         ->assertForbidden();
 });
 
+it('allows carrier fleet roles to build accepted load route only for their delivery', function () {
+    Http::fake([
+        'router.project-osrm.org/route/v1/driving/*' => Http::response([
+            'routes' => [[
+                'distance' => 9100,
+                'duration' => 1400,
+                'geometry' => [
+                    'coordinates' => [
+                        [37.5000, 55.7000],
+                        [37.6173, 55.7558],
+                    ],
+                ],
+            ]],
+        ]),
+    ]);
+
+    $shipper = freightUser('shipper', ['email' => 'fleet-route-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $owner = freightUser('carrier', ['email' => 'fleet-route-owner@example.com']);
+    $manager = freightUser('carrier', ['email' => 'fleet-route-manager@example.com']);
+    $driver = freightUser('carrier', ['email' => 'fleet-route-driver@example.com']);
+    $outsideCarrier = freightUser('carrier', ['email' => 'fleet-route-outside@example.com']);
+
+    $company = freightCompany($owner, 'carrier');
+    $company->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $company->carrierMembers()->syncWithoutDetaching([
+        $manager->id => ['role' => 'manager', 'status' => 'active', 'joined_at' => now()],
+        $driver->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
+    ]);
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Fleet route load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'loading_lat' => 55.7558,
+        'loading_lng' => 37.6173,
+        'status' => 'in_progress',
+        'delivery_stage' => 'carrier_selected',
+    ]);
+
+    $vehicle = Vehicle::create([
+        'carrier_id' => $owner->id,
+        'assigned_driver_id' => $driver->id,
+        'company_id' => $company->id,
+        'title' => 'Fleet route truck',
+        'current_lat' => 55.7000,
+        'current_lng' => 37.5000,
+        'is_available' => false,
+        'is_location_visible' => true,
+    ]);
+
+    Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $owner->id,
+        'company_id' => $company->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'accepted',
+        'accepted_at' => now(),
+        'contract_accepted_at' => now(),
+        'contract_signed_at' => now(),
+    ]);
+
+    foreach ([$owner, $manager, $driver] as $user) {
+        $this->actingAs($user)
+            ->getJson(route('api.map.accepted-route', $load))
+            ->assertOk()
+            ->assertJsonPath('distance_m', 9100)
+            ->assertJsonPath('vehicle.id', $vehicle->id);
+    }
+
+    $this->actingAs($outsideCarrier)
+        ->getJson(route('api.map.accepted-route', $load))
+        ->assertForbidden();
+});
+
 it('shows carrier bid workspace by fleet role', function () {
     $shipper = freightUser('shipper', ['email' => 'bid-shipper@example.com']);
     $shipperCompany = freightCompany($shipper, 'shipper');
