@@ -114,6 +114,7 @@ Invoke-Step "Starting runtime container on port $Port" {
 
 Invoke-Step "Preparing Laravel" {
     docker exec -w /app $Container php artisan optimize:clear
+    docker exec -w /app $Container sh -lc "grep -q '^APP_KEY=base64:' .env || php artisan key:generate --force"
     docker exec -w /app $Container sh -lc "grep -q '^APP_URL=' .env && sed -i 's#^APP_URL=.*#APP_URL=http://127.0.0.1:$Port#' .env || printf '\nAPP_URL=http://127.0.0.1:$Port\n' >> .env"
     docker exec -w /app $Container php artisan storage:link --force
     docker exec -w /app $Container php artisan migrate --force

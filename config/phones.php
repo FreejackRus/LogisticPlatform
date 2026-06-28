@@ -10,5 +10,5 @@ return [
     | considered valid for phone number validation.
     |
     */
-    'valid_countries' => env('VALID_PHONE_COUNTRIES', 'US,CA'),
-]; 
+    'valid_countries' => env('VALID_PHONE_COUNTRIES', 'RU'),
+];

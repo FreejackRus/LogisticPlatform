@@ -40,8 +40,13 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate
 
+      - name: Run dependency audits
+        run: |
+          composer audit --no-interaction
+          npm audit --omit=dev
+
       - name: Build frontend assets
         run: npm run build
 
-      - name: Run freight feature tests
-        run: php artisan test tests/Feature/FreightExchangeTest.php
+      - name: Run test suite
+        run: php artisan test tests/Feature/FreightExchangeTest.php tests/Feature/Auth tests/Feature/ProfileTest.php tests/Unit/FreightServicesTest.php tests/Unit/GeocodingServiceTest.php

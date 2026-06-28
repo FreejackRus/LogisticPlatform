@@ -41,7 +41,6 @@ class HandleInertiaRequests extends Middleware
             'app' => [
                 'name' => config('app.name'),
             ],
-            'integration_settings' => [],
             'translations' => [
                 'freight' => trans('freight'),
             ],

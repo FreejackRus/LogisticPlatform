@@ -109,5 +109,4 @@ export type PageProps<
     app: {
         name: string;
     };
-    integration_settings: Record<string, string>;
 };
