@@ -1694,6 +1694,129 @@ it('enforces freight model policies for ownership and workflow state', function 
     expect($notification->refresh()->is_read)->toBeTrue();
 });
 
+it('keeps complaints tied to the reporter business context', function () {
+    $shipper = freightUser('shipper', ['email' => 'complaint-shipper@example.com']);
+    $otherShipper = freightUser('shipper', ['email' => 'complaint-other-shipper@example.com']);
+    $carrier = freightUser('carrier', ['email' => 'complaint-carrier@example.com']);
+    $otherCarrier = freightUser('carrier', ['email' => 'complaint-other-carrier@example.com']);
+    $dispatcher = freightUser('dispatcher', ['email' => 'complaint-dispatcher@example.com']);
+    $otherDispatcher = freightUser('dispatcher', ['email' => 'complaint-other-dispatcher@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $otherShipperCompany = freightCompany($otherShipper, 'shipper');
+    $carrierCompany = freightCompany($carrier, 'carrier');
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Complaint load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'active',
+    ]);
+    $otherLoad = FreightLoad::create([
+        'shipper_id' => $otherShipper->id,
+        'company_id' => $otherShipperCompany->id,
+        'title' => 'Other complaint load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Samara',
+        'status' => 'active',
+    ]);
+    $vehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Complaint truck',
+        'is_available' => true,
+    ]);
+    $bid = Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'pending',
+    ]);
+    $connection = DispatcherConnection::create([
+        'dispatcher_id' => $dispatcher->id,
+        'load_id' => $load->id,
+        'shipper_id' => $shipper->id,
+        'shipper_company_id' => $shipperCompany->id,
+        'carrier_id' => $carrier->id,
+        'carrier_company_id' => $carrierCompany->id,
+        'vehicle_id' => $vehicle->id,
+        'bid_id' => $bid->id,
+        'status' => 'connected',
+    ]);
+
+    $this->actingAs($carrier)
+        ->post(route('complaints.store'), [
+            'load_id' => $load->id,
+            'bid_id' => $bid->id,
+            'target_user_id' => $shipper->id,
+            'type' => 'payment_issue',
+            'message' => 'Payment is late.',
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($otherCarrier)
+        ->post(route('complaints.store'), [
+            'load_id' => $load->id,
+            'type' => 'other',
+            'message' => 'Trying to attach чужой груз.',
+        ])
+        ->assertSessionHasErrors('load_id');
+
+    $this->actingAs($shipper)
+        ->post(route('complaints.store'), [
+            'load_id' => $otherLoad->id,
+            'type' => 'other',
+            'message' => 'Trying to attach чужой груз.',
+        ])
+        ->assertSessionHasErrors('load_id');
+
+    $this->actingAs($carrier)
+        ->post(route('complaints.store'), [
+            'target_user_id' => $shipper->id,
+            'type' => 'other',
+            'message' => 'No business context.',
+        ])
+        ->assertSessionHasErrors('target_user_id');
+
+    $this->actingAs($carrier)
+        ->post(route('complaints.store'), [
+            'load_id' => $load->id,
+            'target_user_id' => $carrier->id,
+            'type' => 'other',
+            'message' => 'Self complaint.',
+        ])
+        ->assertSessionHasErrors('target_user_id');
+
+    $this->actingAs($carrier)
+        ->post(route('complaints.store'), [
+            'load_id' => $load->id,
+            'target_user_id' => $otherCarrier->id,
+            'type' => 'other',
+            'message' => 'Unrelated target.',
+        ])
+        ->assertSessionHasErrors('target_user_id');
+
+    $this->actingAs($otherDispatcher)
+        ->post(route('complaints.store'), [
+            'dispatcher_connection_id' => $connection->id,
+            'type' => 'other',
+            'message' => 'Trying чужое соединение.',
+        ])
+        ->assertSessionHasErrors('dispatcher_connection_id');
+
+    $this->actingAs($dispatcher)
+        ->post(route('complaints.store'), [
+            'dispatcher_connection_id' => $connection->id,
+            'type' => 'other',
+            'message' => 'Valid dispatcher complaint.',
+        ])
+        ->assertRedirect();
+
+    expect(Complaint::count())->toBe(2);
+});
+
 it('allows admins to moderate freight entities and complaints', function () {
     $admin = freightUser('admin');
     $shipper = freightUser('shipper');
