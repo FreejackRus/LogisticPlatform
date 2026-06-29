@@ -1176,7 +1176,31 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         );
 
     $this->actingAs($secondCarrier)
+        ->get(route('loads.show', $load))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('canSeeContacts', false)
+            ->where('load.contact_phone', null)
+            ->where('load.contact_email', null)
+            ->where('load.company.phone', null)
+            ->where('load.contract_url', null)
+            ->where('routeToLoadUrl', null)
+        );
+
+    $this->actingAs($secondCarrier)
         ->get(route('carrier.deliveries.show', $bid))
+        ->assertForbidden();
+
+    $this->actingAs($secondCarrier)
+        ->get(route('loads.contract', $load))
+        ->assertForbidden();
+
+    $this->actingAs($secondCarrier)
+        ->get(route('loads.contract.download', $load))
+        ->assertForbidden();
+
+    $this->actingAs($secondCarrier)
+        ->getJson(route('api.map.accepted-route', $load))
         ->assertForbidden();
 
     $this->actingAs($shipper)
