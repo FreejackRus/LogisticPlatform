@@ -43,15 +43,18 @@ it('creates company load vehicle and map objects', function () {
     Storage::fake('public');
 
     $shipper = freightUser('shipper');
-    freightCompany($shipper, 'shipper');
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $shipperCompany->update(['verification_status' => 'verified']);
 
     $this->actingAs($shipper)
         ->post(route('loads.store'), [
             'title' => 'Steel to Kazan',
             'loading_city' => 'Москва',
             'unloading_city' => 'Казань',
+            'body_type' => 'tent',
             'weight_kg' => 5000,
             'price' => 62000,
+            'is_urgent' => true,
             'publish' => true,
             'cargo_photo' => UploadedFile::fake()->image('cargo.jpg', 900, 600),
         ])
@@ -69,13 +72,15 @@ it('creates company load vehicle and map objects', function () {
     Storage::disk('public')->assertExists($load->cargo_photo_path);
 
     $carrier = freightUser('carrier');
-    freightCompany($carrier, 'carrier');
+    $carrierCompany = freightCompany($carrier, 'carrier');
+    $carrierCompany->update(['verification_status' => 'verified']);
 
     $this->actingAs($carrier)
         ->post(route('vehicles.store'), [
             'title' => 'Tilt 20t',
             'body_type' => 'tent',
             'capacity_kg' => 20000,
+            'current_city' => 'Moscow',
             'is_available' => true,
             'is_location_visible' => true,
             'photo' => UploadedFile::fake()->image('vehicle.jpg', 900, 600),
@@ -117,6 +122,39 @@ it('creates company load vehicle and map objects', function () {
         ->assertJsonCount(1, 'vehicles')
         ->assertJsonPath('loads.0.url', route('loads.show', $load))
         ->assertJsonPath('vehicles.0.url', route('vehicles.show', $vehicle));
+
+    $this->getJson(route('api.map.objects', [
+        'types' => ['loads'],
+        'q' => 'Steel',
+        'from_city' => $load->loading_city,
+        'to_city' => $load->unloading_city,
+        'body_type' => 'tent',
+        'urgent' => 1,
+        'verified' => 1,
+        'min_price' => 60000,
+        'max_price' => 63000,
+    ]))
+        ->assertOk()
+        ->assertJsonCount(1, 'loads')
+        ->assertJsonCount(0, 'vehicles')
+        ->assertJsonPath('filters.q', 'Steel')
+        ->assertJsonPath('filters.urgent', true)
+        ->assertJsonPath('filters.verified', true)
+        ->assertJsonPath('filters.min_price', 60000)
+        ->assertJsonPath('filters.max_price', 63000);
+
+    $this->getJson(route('api.map.objects', [
+        'types' => ['vehicles'],
+        'from_city' => 'Moscow',
+        'body_type' => 'tent',
+        'online' => 1,
+        'verified' => 1,
+    ]))
+        ->assertOk()
+        ->assertJsonCount(0, 'loads')
+        ->assertJsonCount(1, 'vehicles')
+        ->assertJsonPath('filters.from_city', 'Moscow')
+        ->assertJsonPath('filters.body_type', 'tent');
 
     $this->getJson(route('api.map.objects', [
         'types' => ['vehicles'],

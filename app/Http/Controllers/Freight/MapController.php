@@ -25,6 +25,9 @@ class MapController extends Controller
                 'tileUrl' => config('freight.map.tile_url'),
                 'attribution' => config('freight.map.attribution'),
             ],
+            'options' => [
+                'bodyTypes' => config('freight.options.body_types', []),
+            ],
         ]);
     }
 
@@ -33,8 +36,15 @@ class MapController extends Controller
         $filters = $request->validate([
             'types' => ['nullable', 'array'],
             'types.*' => ['string', 'in:loads,vehicles'],
+            'q' => ['nullable', 'string', 'max:255'],
+            'from_city' => ['nullable', 'string', 'max:255'],
+            'to_city' => ['nullable', 'string', 'max:255'],
             'body_type' => ['nullable', 'string', 'max:80'],
             'online' => ['nullable', 'boolean'],
+            'urgent' => ['nullable', 'boolean'],
+            'verified' => ['nullable', 'boolean'],
+            'min_price' => ['nullable', 'integer', 'min:0'],
+            'max_price' => ['nullable', 'integer', 'min:0'],
             'limit' => ['nullable', 'integer', 'min:20', 'max:500'],
             'bounds' => ['nullable', 'array'],
             'bounds.north' => ['required_with:bounds', 'numeric', 'between:-90,90'],
@@ -47,13 +57,28 @@ class MapController extends Controller
         $limit = (int) ($filters['limit'] ?? 250);
         $bounds = $this->normalizedBounds($filters['bounds'] ?? null);
         $bodyType = $filters['body_type'] ?? null;
+        $search = $filters['q'] ?? null;
 
         $loads = $types->contains('loads') ? FreightLoad::query()
             ->active()
             ->with('company')
             ->whereNotNull('loading_lat')
             ->whereNotNull('loading_lng')
+            ->when($search, fn ($query) => $query->where(function ($query) use ($search) {
+                $query->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('cargo_type', 'like', '%'.$search.'%')
+                    ->orWhere('cargo_description', 'like', '%'.$search.'%')
+                    ->orWhere('loading_city', 'like', '%'.$search.'%')
+                    ->orWhere('unloading_city', 'like', '%'.$search.'%')
+                    ->orWhereHas('company', fn ($company) => $company->where('name', 'like', '%'.$search.'%'));
+            }))
+            ->when($filters['from_city'] ?? null, fn ($query, $city) => $query->where('loading_city', 'like', '%'.$city.'%'))
+            ->when($filters['to_city'] ?? null, fn ($query, $city) => $query->where('unloading_city', 'like', '%'.$city.'%'))
             ->when($bodyType, fn ($query) => $query->where('body_type', $bodyType))
+            ->when($request->boolean('urgent'), fn ($query) => $query->where('is_urgent', true))
+            ->when($filters['min_price'] ?? null, fn ($query, $price) => $query->where('price', '>=', $price))
+            ->when($filters['max_price'] ?? null, fn ($query, $price) => $query->where('price', '<=', $price))
+            ->when($request->boolean('verified'), fn ($query) => $query->whereHas('company', fn ($company) => $company->where('verification_status', 'verified')))
             ->when($bounds, fn ($query) => $this->applyBounds($query, 'loading_lat', 'loading_lng', $bounds))
             ->latest('published_at')
             ->limit($limit)
@@ -68,6 +93,8 @@ class MapController extends Controller
                 'route' => $load->loading_city.' -> '.$load->unloading_city,
                 'body_type' => $load->body_type,
                 'price' => $load->price,
+                'is_urgent' => $load->is_urgent,
+                'company' => $load->company?->name,
                 'url' => route('loads.show', $load),
             ]) : collect();
 
@@ -77,8 +104,17 @@ class MapController extends Controller
             ->visibleOnMap()
             ->with('company')
             ->when($user?->isCarrier(), fn ($query) => $this->scopeCarrierVehicles($query, $user))
+            ->when($search, fn ($query) => $query->where(function ($query) use ($search) {
+                $query->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('body_type', 'like', '%'.$search.'%')
+                    ->orWhere('current_city', 'like', '%'.$search.'%')
+                    ->orWhere('registration_number', 'like', '%'.$search.'%')
+                    ->orWhereHas('company', fn ($company) => $company->where('name', 'like', '%'.$search.'%'));
+            }))
+            ->when($filters['from_city'] ?? null, fn ($query, $city) => $query->where('current_city', 'like', '%'.$city.'%'))
             ->when($bodyType, fn ($query) => $query->where('body_type', $bodyType))
             ->when(array_key_exists('online', $filters), fn ($query) => $query->where('is_online', (bool) $filters['online']))
+            ->when($request->boolean('verified'), fn ($query) => $query->whereHas('company', fn ($company) => $company->where('verification_status', 'verified')))
             ->when($bounds, fn ($query) => $this->applyBounds($query, 'current_lat', 'current_lng', $bounds))
             ->latest('last_location_at')
             ->limit($limit)
@@ -101,8 +137,15 @@ class MapController extends Controller
             'vehicles' => $vehicles,
             'filters' => [
                 'types' => $types->values(),
+                'q' => $search,
+                'from_city' => $filters['from_city'] ?? null,
+                'to_city' => $filters['to_city'] ?? null,
                 'body_type' => $bodyType,
                 'online' => array_key_exists('online', $filters) ? (bool) $filters['online'] : null,
+                'urgent' => array_key_exists('urgent', $filters) ? (bool) $filters['urgent'] : null,
+                'verified' => array_key_exists('verified', $filters) ? (bool) $filters['verified'] : null,
+                'min_price' => isset($filters['min_price']) ? (int) $filters['min_price'] : null,
+                'max_price' => isset($filters['max_price']) ? (int) $filters['max_price'] : null,
                 'limit' => $limit,
                 'bounded' => $bounds !== null,
             ],

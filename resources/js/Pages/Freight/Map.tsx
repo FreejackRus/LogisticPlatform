@@ -1,3 +1,4 @@
+import { Button } from '@/Components/ui/button';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { useFreightTranslation } from '@/hooks/useFreightTranslation';
 import { Head } from '@inertiajs/react';
@@ -25,15 +26,28 @@ type MapObject = {
     route?: string;
     body_type?: string;
     is_online?: boolean;
+    is_urgent?: boolean;
+    company?: string;
     url?: string;
 };
 
 type MapFilters = {
     showLoads: boolean;
     showVehicles: boolean;
+    search: string;
+    fromCity: string;
+    toCity: string;
     bodyType: string;
     onlineOnly: boolean;
+    urgentOnly: boolean;
+    verifiedOnly: boolean;
+    minPrice: string;
+    maxPrice: string;
     limit: string;
+};
+
+type MapOptions = {
+    bodyTypes: Record<string, string>;
 };
 
 type AcceptedRoute = {
@@ -122,7 +136,7 @@ function clusteredObjects(objects: MapObject[], zoom: number) {
     });
 }
 
-export default function Map({ map }: { map: MapConfig }) {
+export default function Map({ map, options }: { map: MapConfig; options: MapOptions }) {
     const t = useFreightTranslation();
     const ref = useRef<HTMLDivElement>(null);
     const mapRef = useRef<L.Map | null>(null);
@@ -134,8 +148,15 @@ export default function Map({ map }: { map: MapConfig }) {
     const [filters, setFilters] = useState<MapFilters>({
         showLoads: true,
         showVehicles: true,
+        search: '',
+        fromCity: '',
+        toCity: '',
         bodyType: '',
         onlineOnly: false,
+        urgentOnly: false,
+        verifiedOnly: false,
+        minPrice: '',
+        maxPrice: '',
         limit: '250',
     });
 
@@ -155,8 +176,15 @@ export default function Map({ map }: { map: MapConfig }) {
                 filters.showLoads ? 'loads' : null,
                 filters.showVehicles ? 'vehicles' : null,
             ].filter(Boolean),
+            q: filters.search || undefined,
+            from_city: filters.fromCity || undefined,
+            to_city: filters.toCity || undefined,
             body_type: filters.bodyType || undefined,
             online: filters.onlineOnly ? true : undefined,
+            urgent: filters.urgentOnly ? true : undefined,
+            verified: filters.verifiedOnly ? true : undefined,
+            min_price: filters.minPrice || undefined,
+            max_price: filters.maxPrice || undefined,
             limit: filters.limit,
             bounds: useBoundsRef.current ? {
                 north: bounds.getNorth(),
@@ -211,7 +239,7 @@ export default function Map({ map }: { map: MapConfig }) {
                             : t('map.vehicle_card');
                     const body =
                         item.route ||
-                        [item.city, item.body_type].filter(Boolean).join(' ');
+                        [item.city, item.body_type, item.company].filter(Boolean).join(' ');
 
                     L.marker([item.lat, item.lng], {
                         icon: objectIcon(item.type, color),
@@ -289,7 +317,25 @@ export default function Map({ map }: { map: MapConfig }) {
                 );
             })
             .catch(() => setStatus(t('map.failed')));
-    }, [filterKey, filters.bodyType, filters.limit, filters.onlineOnly, filters.showLoads, filters.showVehicles, routeLoadId, shouldShowAcceptedRoute, t]);
+    }, [filterKey, filters.bodyType, filters.fromCity, filters.limit, filters.maxPrice, filters.minPrice, filters.onlineOnly, filters.search, filters.showLoads, filters.showVehicles, filters.toCity, filters.urgentOnly, filters.verifiedOnly, routeLoadId, shouldShowAcceptedRoute, t]);
+
+    const resetFilters = () => {
+        setFilters({
+            showLoads: true,
+            showVehicles: true,
+            search: '',
+            fromCity: '',
+            toCity: '',
+            bodyType: '',
+            onlineOnly: false,
+            urgentOnly: false,
+            verifiedOnly: false,
+            minPrice: '',
+            maxPrice: '',
+            limit: '250',
+        });
+        useBoundsRef.current = false;
+    };
 
     useEffect(() => {
         if (!ref.current || mapRef.current) return;
@@ -349,7 +395,26 @@ export default function Map({ map }: { map: MapConfig }) {
                     </h1>
                     <p className="text-sm text-muted-foreground">{status}</p>
                 </div>
-                <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,auto))] lg:items-center">
+                <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-center">
+                    <input
+                        className="min-h-10 rounded-md border bg-background px-3 text-sm"
+                        value={filters.search}
+                        onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+                        placeholder={t('map.filters.search_placeholder')}
+                    />
+                    <input
+                        className="min-h-10 rounded-md border bg-background px-3 text-sm"
+                        value={filters.fromCity}
+                        onChange={(event) => setFilters((current) => ({ ...current, fromCity: event.target.value }))}
+                        placeholder={t('map.filters.from_city')}
+                    />
+                    <input
+                        className="min-h-10 rounded-md border bg-background px-3 text-sm"
+                        value={filters.toCity}
+                        disabled={!filters.showLoads}
+                        onChange={(event) => setFilters((current) => ({ ...current, toCity: event.target.value }))}
+                        placeholder={t('map.filters.to_city')}
+                    />
                     <label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
                         <input
                             type="checkbox"
@@ -372,9 +437,9 @@ export default function Map({ map }: { map: MapConfig }) {
                         onChange={(event) => setFilters((current) => ({ ...current, bodyType: event.target.value }))}
                     >
                         <option value="">{t('map.filters.any_body')}</option>
-                        {['тент', 'рефрижератор', 'изотерм', 'бортовой'].map((bodyType) => (
-                            <option key={bodyType} value={bodyType}>
-                                {bodyType}
+                        {Object.entries(options.bodyTypes).map(([value, label]) => (
+                            <option key={value} value={value}>
+                                {label}
                             </option>
                         ))}
                     </select>
@@ -387,6 +452,41 @@ export default function Map({ map }: { map: MapConfig }) {
                         />
                         {t('map.filters.online')}
                     </label>
+                    <label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={filters.urgentOnly}
+                            disabled={!filters.showLoads}
+                            onChange={(event) => setFilters((current) => ({ ...current, urgentOnly: event.target.checked }))}
+                        />
+                        {t('map.filters.urgent')}
+                    </label>
+                    <label className="flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={filters.verifiedOnly}
+                            onChange={(event) => setFilters((current) => ({ ...current, verifiedOnly: event.target.checked }))}
+                        />
+                        {t('map.filters.verified')}
+                    </label>
+                    <input
+                        className="min-h-10 rounded-md border bg-background px-3 text-sm"
+                        type="number"
+                        min="0"
+                        value={filters.minPrice}
+                        disabled={!filters.showLoads}
+                        onChange={(event) => setFilters((current) => ({ ...current, minPrice: event.target.value }))}
+                        placeholder={t('map.filters.min_price')}
+                    />
+                    <input
+                        className="min-h-10 rounded-md border bg-background px-3 text-sm"
+                        type="number"
+                        min="0"
+                        value={filters.maxPrice}
+                        disabled={!filters.showLoads}
+                        onChange={(event) => setFilters((current) => ({ ...current, maxPrice: event.target.value }))}
+                        placeholder={t('map.filters.max_price')}
+                    />
                     <select
                         className="min-h-10 rounded-md border bg-background px-3 text-sm"
                         value={filters.limit}
@@ -398,6 +498,9 @@ export default function Map({ map }: { map: MapConfig }) {
                             </option>
                         ))}
                     </select>
+                    <Button type="button" variant="secondary" onClick={resetFilters}>
+                        {t('map.filters.reset')}
+                    </Button>
                 </div>
                 <div
                     ref={ref}
