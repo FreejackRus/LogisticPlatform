@@ -76,6 +76,18 @@ type Props = {
     delivery: Delivery;
 };
 
+type DeliveryEventForm = {
+    type: string;
+    note: string;
+    lat: number | null;
+    lng: number | null;
+};
+
+type CurrentLocation = {
+    lat: number;
+    lng: number;
+};
+
 const statusTone: Record<string, string> = {
     in_progress: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     completed: 'border-slate-200 bg-slate-50 text-slate-700',
@@ -84,9 +96,12 @@ const statusTone: Record<string, string> = {
 export default function DeliveryShow({ delivery }: Props) {
     const t = useFreightTranslation();
     const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-    const eventForm = useForm({
+    const [locationStatus, setLocationStatus] = useState<string | null>(null);
+    const eventForm = useForm<DeliveryEventForm>({
         type: delivery.delivery_event_options[0] ?? '',
         note: '',
+        lat: null,
+        lng: null,
     });
     const photoForm = useForm<{ carrier_cargo_photo: File | null }>({
         carrier_cargo_photo: null,
@@ -98,6 +113,9 @@ export default function DeliveryShow({ delivery }: Props) {
     const price = delivery.load.price
         ? t('loads.price_rub', { price: delivery.load.price.toLocaleString('ru-RU') })
         : t('loads.negotiable_price');
+    const eventRequiresCarrierPhoto = (type: string) => type === 'loaded' && !delivery.carrier_cargo_photo_url;
+    const isCurrentEventBlocked = eventRequiresCarrierPhoto(eventForm.data.type);
+    const isNextEventBlocked = delivery.next_delivery_event ? eventRequiresCarrierPhoto(delivery.next_delivery_event) : false;
     const paymentType = delivery.load.payment_type
         ? t(`loads.payment_types.${delivery.load.payment_type}`)
         : null;
@@ -117,11 +135,55 @@ export default function DeliveryShow({ delivery }: Props) {
         }).then(setQrDataUrl).catch(() => setQrDataUrl(null));
     }, [delivery.load.delivery_confirmation?.url]);
 
-    const submitEvent: FormEventHandler = (event) => {
-        event.preventDefault();
+    const withCurrentLocation = (callback: (location: CurrentLocation | null) => void) => {
+        if (!navigator.geolocation) {
+            setLocationStatus(t('carrier_deliveries.location_unavailable'));
+            callback(null);
+            return;
+        }
+
+        setLocationStatus(t('carrier_deliveries.location_requesting'));
+
+        navigator.geolocation.getCurrentPosition(
+            ({ coords }) => {
+                setLocationStatus(t('carrier_deliveries.location_attached'));
+                callback({
+                    lat: coords.latitude,
+                    lng: coords.longitude,
+                });
+            },
+            () => {
+                setLocationStatus(t('carrier_deliveries.location_unavailable'));
+                callback(null);
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 60000,
+                timeout: 6000,
+            },
+        );
+    };
+
+    const postEvent = (payload: DeliveryEventForm, onSuccess?: () => void) => {
+        eventForm.transform((data) => ({ ...data, ...payload }));
         eventForm.post(delivery.load.event_url, {
             preserveScroll: true,
-            onSuccess: () => eventForm.reset('note'),
+            onSuccess,
+            onFinish: () => eventForm.transform((data) => data),
+        });
+    };
+
+    const submitEvent: FormEventHandler = (event) => {
+        event.preventDefault();
+        withCurrentLocation((location) => {
+            postEvent(
+                {
+                    ...eventForm.data,
+                    lat: location?.lat ?? null,
+                    lng: location?.lng ?? null,
+                },
+                () => eventForm.reset('note'),
+            );
         });
     };
 
@@ -130,11 +192,17 @@ export default function DeliveryShow({ delivery }: Props) {
             return;
         }
 
-        router.post(
-            delivery.load.event_url,
-            { type: delivery.next_delivery_event },
-            { preserveScroll: true },
-        );
+        withCurrentLocation((location) => {
+            router.post(
+                delivery.load.event_url,
+                {
+                    type: delivery.next_delivery_event,
+                    lat: location?.lat ?? null,
+                    lng: location?.lng ?? null,
+                },
+                { preserveScroll: true },
+            );
+        });
     };
 
     const submitPhoto: FormEventHandler = (event) => {
@@ -265,7 +333,7 @@ export default function DeliveryShow({ delivery }: Props) {
                                         {t(`delivery_events.${delivery.next_delivery_event}`)}
                                     </p>
                                 </div>
-                                <Button type="button" onClick={submitNextEvent}>
+                                <Button type="button" onClick={submitNextEvent} disabled={isNextEventBlocked}>
                                     <CheckCircle2 className="size-4" />
                                     Отметить
                                 </Button>
@@ -288,13 +356,17 @@ export default function DeliveryShow({ delivery }: Props) {
                             onChange={(event) => eventForm.setData('note', event.target.value)}
                             placeholder={t('carrier_deliveries.event_note')}
                         />
-                        <Button disabled={eventForm.processing || !eventForm.data.type}>
+                        <Button disabled={eventForm.processing || !eventForm.data.type || isCurrentEventBlocked}>
                             <CheckCircle2 className="size-4" />
                             {t('carrier_deliveries.update_stage')}
                         </Button>
                         </div>
+                        {(isCurrentEventBlocked || isNextEventBlocked) && (
+                            <p className="text-sm text-destructive">{t('carrier_deliveries.photo_required_before_loaded')}</p>
+                        )}
                         {eventForm.errors.type && <p className="text-sm text-destructive">{eventForm.errors.type}</p>}
                         {eventForm.errors.note && <p className="text-sm text-destructive">{eventForm.errors.note}</p>}
+                        {locationStatus && <p className="text-xs text-muted-foreground">{locationStatus}</p>}
                     </form>
                 )}
 

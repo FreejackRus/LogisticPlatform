@@ -1445,6 +1445,12 @@ it('enforces vehicle eligibility for carrier responses and releases vehicles aft
             ->has('carrierVehicles', 0)
         );
 
+    $this->actingAs($carrier)
+        ->post(route('bids.carrier-photo', $bid), [
+            'carrier_cargo_photo' => UploadedFile::fake()->image('eligible-carrier-cargo.jpg', 900, 600),
+        ])
+        ->assertRedirect();
+
     foreach ([
         'en_route_to_pickup',
         'arrived_pickup',

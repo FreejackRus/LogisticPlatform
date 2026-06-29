@@ -10,6 +10,8 @@ use App\Models\FreightNotification;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class DeliveryEventController extends Controller
 {
@@ -32,19 +34,27 @@ class DeliveryEventController extends Controller
             'lng' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
 
-        $event = DeliveryEvent::create([
-            'load_id' => $load->id,
-            'bid_id' => $bid->id,
-            'actor_id' => $user->id,
-            'type' => $data['type'],
-            'note' => $data['note'] ?? null,
-            'lat' => $data['lat'] ?? null,
-            'lng' => $data['lng'] ?? null,
-        ]);
+        $this->ensureEventCanBeStored($bid, $data['type']);
 
-        if (in_array($data['type'], DeliveryEvent::CARRIER_EVENT_TYPES, true)) {
-            $load->update(['delivery_stage' => $data['type']]);
-        }
+        $event = DB::transaction(function () use ($load, $bid, $user, $data) {
+            $event = DeliveryEvent::create([
+                'load_id' => $load->id,
+                'bid_id' => $bid->id,
+                'actor_id' => $user->id,
+                'type' => $data['type'],
+                'note' => $data['note'] ?? null,
+                'lat' => $data['lat'] ?? null,
+                'lng' => $data['lng'] ?? null,
+            ]);
+
+            if (in_array($data['type'], DeliveryEvent::CARRIER_EVENT_TYPES, true)) {
+                $load->update(['delivery_stage' => $data['type']]);
+            }
+
+            $this->updateVehicleLocationFromEvent($bid, $data);
+
+            return $event;
+        });
 
         $this->notifyDeliveryEvent($load, $bid, $event, $user);
 
@@ -67,6 +77,31 @@ class DeliveryEventController extends Controller
         }
 
         return [];
+    }
+
+    private function ensureEventCanBeStored(Bid $bid, string $type): void
+    {
+        if ($type !== 'loaded' || $bid->carrier_cargo_photo_path) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'type' => 'Перед погрузкой загрузите фото груза от перевозчика.',
+        ]);
+    }
+
+    private function updateVehicleLocationFromEvent(Bid $bid, array $data): void
+    {
+        if (! isset($data['lat'], $data['lng']) || ! $bid->vehicle) {
+            return;
+        }
+
+        $bid->vehicle->update([
+            'current_lat' => $data['lat'],
+            'current_lng' => $data['lng'],
+            'is_online' => true,
+            'last_location_at' => now(),
+        ]);
     }
 
     private function notifyDeliveryEvent(FreightLoad $load, Bid $bid, DeliveryEvent $event, User $actor): void
