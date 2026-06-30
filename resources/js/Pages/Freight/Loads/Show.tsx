@@ -87,6 +87,18 @@ type Props = {
     carrierVehicles: { id: number; title: string; registration_number?: string }[];
 };
 
+type DeliveryEventForm = {
+    type: string;
+    note: string;
+    lat: number | null;
+    lng: number | null;
+};
+
+type CurrentLocation = {
+    lat: number;
+    lng: number;
+};
+
 const statusTone: Record<string, string> = {
     draft: 'border-slate-200 bg-slate-50 text-slate-700',
     active: 'border-blue-200 bg-blue-50 text-blue-800',
@@ -135,10 +147,13 @@ export default function Show({
     const completeForm = useForm({
         delivery_confirmation: new URLSearchParams(window.location.search).get('confirm') ?? '',
     });
-    const deliveryForm = useForm({
+    const deliveryForm = useForm<DeliveryEventForm>({
         type: load.delivery_event_options?.[0] ?? '',
         note: '',
+        lat: null,
+        lng: null,
     });
+    const [locationStatus, setLocationStatus] = useState<string | null>(null);
 
     const currentStage = load.delivery_stage
         ? t(`delivery_events.${load.delivery_stage}`)
@@ -151,6 +166,10 @@ export default function Show({
         : t('common.not_specified');
     const dates = formatDateRange(load.loading_date, load.unloading_date, t('common.not_specified'));
     const bidsCount = load.bids?.length ?? 0;
+    const isCarrierDeliveryUpdate = Boolean(load.delivery_event_options?.length && !load.delivery_event_options.includes('shipper_note'));
+    const hasCarrierCargoPhoto = Boolean(load.bids?.some((bid) => bid.status === 'accepted' && bid.carrier_cargo_photo_url));
+    const eventRequiresCarrierPhoto = (type: string) => type === 'loaded' && !hasCarrierCargoPhoto;
+    const isDeliveryEventBlocked = eventRequiresCarrierPhoto(deliveryForm.data.type);
 
     const quickFacts = useMemo(() => [
         { label: t('common.fixed_price'), value: price },
@@ -173,11 +192,53 @@ export default function Show({
         completeForm.patch(route('loads.complete', load.id));
     };
 
+    const withCurrentLocation = (callback: (location: CurrentLocation | null) => void) => {
+        if (!isCarrierDeliveryUpdate) {
+            callback(null);
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            setLocationStatus(t('carrier_deliveries.location_unavailable'));
+            callback(null);
+            return;
+        }
+
+        setLocationStatus(t('carrier_deliveries.location_requesting'));
+
+        navigator.geolocation.getCurrentPosition(
+            ({ coords }) => {
+                setLocationStatus(t('carrier_deliveries.location_attached'));
+                callback({
+                    lat: coords.latitude,
+                    lng: coords.longitude,
+                });
+            },
+            () => {
+                setLocationStatus(t('carrier_deliveries.location_unavailable'));
+                callback(null);
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 60000,
+                timeout: 6000,
+            },
+        );
+    };
+
     const submitDeliveryEvent: FormEventHandler = (event) => {
         event.preventDefault();
-        deliveryForm.post(route('loads.delivery-events.store', load.id), {
-            preserveScroll: true,
-            onSuccess: () => deliveryForm.reset('note'),
+        withCurrentLocation((location) => {
+            deliveryForm.transform((data) => ({
+                ...data,
+                lat: location?.lat ?? null,
+                lng: location?.lng ?? null,
+            }));
+            deliveryForm.post(route('loads.delivery-events.store', load.id), {
+                preserveScroll: true,
+                onSuccess: () => deliveryForm.reset('note'),
+                onFinish: () => deliveryForm.transform((data) => data),
+            });
         });
     };
 
@@ -399,9 +460,13 @@ export default function Show({
                                     onChange={(event) => deliveryForm.setData('note', event.target.value)}
                                     placeholder={t('carrier_deliveries.event_note')}
                                 />
-                                <Button disabled={deliveryForm.processing || !deliveryForm.data.type}>{t('carrier_deliveries.update_stage')}</Button>
+                                <Button disabled={deliveryForm.processing || !deliveryForm.data.type || isDeliveryEventBlocked}>{t('carrier_deliveries.update_stage')}</Button>
+                                {isDeliveryEventBlocked && (
+                                    <p className="text-sm text-destructive md:col-span-3">{t('carrier_deliveries.photo_required_before_loaded')}</p>
+                                )}
                                 {deliveryForm.errors.type && <p className="text-sm text-destructive">{deliveryForm.errors.type}</p>}
                                 {deliveryForm.errors.note && <p className="text-sm text-destructive">{deliveryForm.errors.note}</p>}
+                                {locationStatus && <p className="text-xs text-muted-foreground md:col-span-3">{locationStatus}</p>}
                             </form>
                         )}
                         <EventList events={load.delivery_events ?? []} />

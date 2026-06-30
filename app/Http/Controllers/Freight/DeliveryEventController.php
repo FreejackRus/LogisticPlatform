@@ -51,7 +51,7 @@ class DeliveryEventController extends Controller
                 $load->update(['delivery_stage' => $data['type']]);
             }
 
-            $this->updateVehicleLocationFromEvent($bid, $data);
+            $this->updateVehicleLocationFromEvent($bid, $data, $user);
 
             return $event;
         });
@@ -90,9 +90,9 @@ class DeliveryEventController extends Controller
         ]);
     }
 
-    private function updateVehicleLocationFromEvent(Bid $bid, array $data): void
+    private function updateVehicleLocationFromEvent(Bid $bid, array $data, User $actor): void
     {
-        if (! isset($data['lat'], $data['lng']) || ! $bid->vehicle) {
+        if (! isset($data['lat'], $data['lng']) || ! $bid->vehicle || ! $bid->canBeOperatedBy($actor)) {
             return;
         }
 

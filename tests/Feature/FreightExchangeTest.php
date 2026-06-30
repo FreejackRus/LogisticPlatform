@@ -1100,11 +1100,17 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         ->post(route('loads.delivery-events.store', $load), [
             'type' => 'issue_reported',
             'note' => 'Driver reported a delay.',
+            'lat' => 56.1234567,
+            'lng' => 38.7654321,
         ])
         ->assertRedirect();
 
     expect($load->refresh()->delivery_stage)->toBe('arrived_pickup')
-        ->and(DeliveryEvent::where('load_id', $load->id)->where('type', 'issue_reported')->exists())->toBeTrue();
+        ->and(DeliveryEvent::where('load_id', $load->id)->where('type', 'issue_reported')->exists())->toBeTrue()
+        ->and((float) $vehicle->refresh()->current_lat)->toBe(56.1234567)
+        ->and((float) $vehicle->current_lng)->toBe(38.7654321)
+        ->and($vehicle->is_online)->toBeTrue()
+        ->and($vehicle->last_location_at)->not->toBeNull();
 
     $this->actingAs($carrier)
         ->get(route('loads.index'))
@@ -1166,6 +1172,18 @@ it('creates fixed-price responses without rejecting other carriers', function ()
             'delivery_confirmation' => '123456',
         ])
         ->assertForbidden();
+
+    $this->actingAs($shipper)
+        ->post(route('loads.delivery-events.store', $load), [
+            'type' => 'shipper_note',
+            'note' => 'Warehouse confirmed the driver is waiting.',
+            'lat' => 59.0000000,
+            'lng' => 39.0000000,
+        ])
+        ->assertRedirect();
+
+    expect((float) $vehicle->refresh()->current_lat)->toBe(56.1234567)
+        ->and((float) $vehicle->current_lng)->toBe(38.7654321);
 
     $this->actingAs($secondCarrier)
         ->get(route('carrier.deliveries.index'))
