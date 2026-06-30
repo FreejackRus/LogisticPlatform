@@ -15,6 +15,8 @@ class CompanyController extends Controller
 {
     public function edit(Request $request): Response
     {
+        abort_if($request->user()->isCarrierCompanyDriver(), 403);
+
         if ($request->user()->company) {
             Gate::authorize('view', $request->user()->company);
         } else {
@@ -33,6 +35,7 @@ class CompanyController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $user = $request->user();
+        abort_if($user->isCarrierCompanyDriver(), 403);
 
         if ($user->company) {
             Gate::authorize('update', $user->company);
@@ -113,6 +116,8 @@ class CompanyController extends Controller
 
     public function addCarrierMember(Request $request): RedirectResponse
     {
+        abort_if($request->user()->isCarrierCompanyDriver(), 403);
+
         $company = $request->user()->company;
 
         abort_unless(

@@ -429,6 +429,23 @@ it('separates carrier fleet managers from company drivers', function () {
     $this->actingAs($driver)
         ->get(route('loads.index'))
         ->assertRedirect(route('carrier.deliveries.index'));
+
+    $this->actingAs($driver)
+        ->get(route('freight.company.edit'))
+        ->assertForbidden();
+
+    $this->actingAs($driver)
+        ->post(route('freight.company.update'), [
+            'name' => 'Driver company profile',
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($driver)
+        ->post(route('freight.company.carriers.store'), [
+            'email' => $manager->email,
+            'role' => 'manager',
+        ])
+        ->assertForbidden();
 });
 
 it('prevents admins from marking vehicles with active deliveries as available', function () {
