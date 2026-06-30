@@ -464,7 +464,6 @@ it('prevents admins from marking vehicles with active deliveries as available', 
         'status' => 'in_progress',
         'delivery_stage' => 'carrier_selected',
     ]);
-
     $vehicle = Vehicle::create([
         'carrier_id' => $carrier->id,
         'company_id' => $carrierCompany->id,
@@ -648,6 +647,18 @@ it('allows carrier fleet roles to build accepted load route only for their deliv
         'delivery_stage' => 'carrier_selected',
     ]);
 
+    FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Open market route load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Tver',
+        'loading_lat' => 55.8000,
+        'loading_lng' => 37.7000,
+        'status' => 'active',
+        'published_at' => now(),
+    ]);
+
     $vehicle = Vehicle::create([
         'carrier_id' => $owner->id,
         'assigned_driver_id' => $driver->id,
@@ -677,6 +688,12 @@ it('allows carrier fleet roles to build accepted load route only for their deliv
             ->assertJsonPath('distance_m', 9100)
             ->assertJsonPath('vehicle.id', $vehicle->id);
     }
+
+    $this->actingAs($driver)
+        ->getJson(route('api.map.objects', ['types' => ['loads']]))
+        ->assertOk()
+        ->assertJsonCount(1, 'loads')
+        ->assertJsonPath('loads.0.id', $load->id);
 
     $this->actingAs($outsideCarrier)
         ->getJson(route('api.map.accepted-route', $load))

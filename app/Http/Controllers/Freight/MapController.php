@@ -59,8 +59,11 @@ class MapController extends Controller
         $bodyType = $filters['body_type'] ?? null;
         $search = $filters['q'] ?? null;
 
-        $loads = $types->contains('loads') ? FreightLoad::query()
-            ->active()
+        $loadQuery = $request->user()?->isCarrierCompanyDriver()
+            ? $this->assignedDriverLoads($request->user())
+            : FreightLoad::query()->active();
+
+        $loads = $types->contains('loads') ? $loadQuery
             ->with('company')
             ->whereNotNull('loading_lat')
             ->whereNotNull('loading_lng')
@@ -309,6 +312,18 @@ class MapController extends Controller
                 $query->orWhere('company_id', $companyId);
             }
         });
+    }
+
+    private function assignedDriverLoads($user)
+    {
+        return FreightLoad::query()
+            ->whereIn('status', ['in_progress', 'completed'])
+            ->whereHas('bids', fn ($query) => $query
+                ->where('status', 'accepted')
+                ->where(function ($query) use ($user) {
+                    $query->where('carrier_id', $user->id)
+                        ->orWhereHas('vehicle', fn ($vehicle) => $vehicle->where('assigned_driver_id', $user->id));
+                }));
     }
 
     private function scopeAcceptedBidForCarrier($query, $user): void
