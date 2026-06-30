@@ -74,13 +74,14 @@ const statusLabels: Record<string, string> = {
 
 const deliveryLabels: Record<string, string> = {
     carrier_selected: 'Перевозчик выбран',
-    en_route_to_pickup: 'В пути к погрузке',
-    arrived_to_pickup: 'Прибыл на погрузку',
+    en_route_to_pickup: 'Едет на погрузку',
+    arrived_pickup: 'Прибыл на погрузку',
     loaded: 'Груз загружен',
-    en_route_to_delivery: 'В пути к выгрузке',
-    arrived_to_delivery: 'Прибыл на выгрузку',
-    unloaded: 'Груз выгружен',
+    in_transit: 'В пути',
+    arrived_unloading: 'Прибыл на выгрузку',
+    delivered_pending_confirmation: 'Ожидает подтверждения доставки',
     delivery_confirmed: 'Доставка подтверждена',
+    shipper_note: 'Комментарий заказчика',
     issue_reported: 'Проблема',
 };
 

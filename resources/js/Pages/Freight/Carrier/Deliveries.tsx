@@ -35,6 +35,7 @@ type Delivery = {
         note?: string | null;
         created_at: string;
     } | null;
+    carrier_cargo_photo_url?: string | null;
 };
 
 type Props = {
@@ -116,6 +117,7 @@ function DeliveryRow({ delivery }: { delivery: Delivery }) {
     const price = delivery.load.price
         ? t('loads.price_rub', { price: delivery.load.price.toLocaleString('ru-RU') })
         : t('loads.negotiable_price');
+    const needsCarrierPhoto = delivery.load.next_delivery_event === 'loaded' && !delivery.carrier_cargo_photo_url;
     const vehicle = [delivery.vehicle?.title, delivery.vehicle?.registration_number]
         .filter(Boolean)
         .join(' · ') || t('common.not_specified');
@@ -154,6 +156,9 @@ function DeliveryRow({ delivery }: { delivery: Delivery }) {
                     <p className="mt-2 text-sm text-muted-foreground">
                         Следующий этап: {t(`delivery_events.${delivery.load.next_delivery_event}`)}
                     </p>
+                )}
+                {needsCarrierPhoto && (
+                    <p className="mt-1 text-sm text-amber-700">{t('carrier_deliveries.photo_required_before_loaded')}</p>
                 )}
             </div>
 
