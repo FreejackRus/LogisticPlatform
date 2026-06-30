@@ -1799,12 +1799,20 @@ it('keeps complaints tied to the reporter business context', function () {
     $shipper = freightUser('shipper', ['email' => 'complaint-shipper@example.com']);
     $otherShipper = freightUser('shipper', ['email' => 'complaint-other-shipper@example.com']);
     $carrier = freightUser('carrier', ['email' => 'complaint-carrier@example.com']);
+    $driver = freightUser('carrier', ['email' => 'complaint-driver@example.com']);
     $otherCarrier = freightUser('carrier', ['email' => 'complaint-other-carrier@example.com']);
     $dispatcher = freightUser('dispatcher', ['email' => 'complaint-dispatcher@example.com']);
     $otherDispatcher = freightUser('dispatcher', ['email' => 'complaint-other-dispatcher@example.com']);
     $shipperCompany = freightCompany($shipper, 'shipper');
     $otherShipperCompany = freightCompany($otherShipper, 'shipper');
     $carrierCompany = freightCompany($carrier, 'carrier');
+    $carrierCompany->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $carrierCompany->carrierMembers()->syncWithoutDetaching([
+        $driver->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
+    ]);
 
     $load = FreightLoad::create([
         'shipper_id' => $shipper->id,
@@ -1822,10 +1830,25 @@ it('keeps complaints tied to the reporter business context', function () {
         'unloading_city' => 'Samara',
         'status' => 'active',
     ]);
+    $assignedLoad = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Assigned complaint load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Tula',
+        'status' => 'in_progress',
+    ]);
     $vehicle = Vehicle::create([
         'carrier_id' => $carrier->id,
         'company_id' => $carrierCompany->id,
         'title' => 'Complaint truck',
+        'is_available' => true,
+    ]);
+    $driverVehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'assigned_driver_id' => $driver->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Assigned complaint truck',
         'is_available' => true,
     ]);
     $bid = Bid::create([
@@ -1844,6 +1867,24 @@ it('keeps complaints tied to the reporter business context', function () {
         'carrier_company_id' => $carrierCompany->id,
         'vehicle_id' => $vehicle->id,
         'bid_id' => $bid->id,
+        'status' => 'connected',
+    ]);
+    $assignedBid = Bid::create([
+        'load_id' => $assignedLoad->id,
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'vehicle_id' => $driverVehicle->id,
+        'status' => 'accepted',
+    ]);
+    $assignedConnection = DispatcherConnection::create([
+        'dispatcher_id' => $dispatcher->id,
+        'load_id' => $assignedLoad->id,
+        'shipper_id' => $shipper->id,
+        'shipper_company_id' => $shipperCompany->id,
+        'carrier_id' => $carrier->id,
+        'carrier_company_id' => $carrierCompany->id,
+        'vehicle_id' => $driverVehicle->id,
+        'bid_id' => $assignedBid->id,
         'status' => 'connected',
     ]);
 
@@ -1907,6 +1948,34 @@ it('keeps complaints tied to the reporter business context', function () {
         ])
         ->assertSessionHasErrors('dispatcher_connection_id');
 
+    $this->actingAs($driver)
+        ->post(route('complaints.store'), [
+            'load_id' => $load->id,
+            'bid_id' => $bid->id,
+            'type' => 'other',
+            'message' => 'Driver should not complain about another company bid.',
+        ])
+        ->assertSessionHasErrors('load_id');
+
+    $this->actingAs($driver)
+        ->post(route('complaints.store'), [
+            'dispatcher_connection_id' => $connection->id,
+            'type' => 'other',
+            'message' => 'Driver should not complain about another company connection.',
+        ])
+        ->assertSessionHasErrors('load_id');
+
+    $this->actingAs($driver)
+        ->post(route('complaints.store'), [
+            'load_id' => $assignedLoad->id,
+            'bid_id' => $assignedBid->id,
+            'dispatcher_connection_id' => $assignedConnection->id,
+            'target_user_id' => $shipper->id,
+            'type' => 'no_show',
+            'message' => 'Assigned driver can complain about assigned delivery.',
+        ])
+        ->assertRedirect();
+
     $this->actingAs($dispatcher)
         ->post(route('complaints.store'), [
             'dispatcher_connection_id' => $connection->id,
@@ -1915,7 +1984,7 @@ it('keeps complaints tied to the reporter business context', function () {
         ])
         ->assertRedirect();
 
-    expect(Complaint::count())->toBe(2);
+    expect(Complaint::count())->toBe(3);
 });
 
 it('allows admins to moderate freight entities and complaints', function () {

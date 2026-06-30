@@ -189,6 +189,10 @@ class ComplaintController extends Controller
             return true;
         }
 
+        if ($user->isCarrierCompanyDriver()) {
+            return false;
+        }
+
         $companyId = $user->activeCarrierCompany()?->id;
 
         return $companyId && (int) $connection->carrier_company_id === (int) $companyId;
@@ -204,6 +208,10 @@ class ComplaintController extends Controller
             return true;
         }
 
+        if ($user->isCarrierCompanyDriver()) {
+            return false;
+        }
+
         $companyId = $user->activeCarrierCompany()?->id;
 
         return $companyId && (int) $bid->company_id === (int) $companyId;
@@ -211,6 +219,13 @@ class ComplaintController extends Controller
 
     private function scopeBidAccessForCarrier($query, User $user): void
     {
+        if ($user->isCarrierCompanyDriver()) {
+            $query->where('carrier_id', $user->id)
+                ->orWhereHas('vehicle', fn ($vehicle) => $vehicle->where('assigned_driver_id', $user->id));
+
+            return;
+        }
+
         $query->where('carrier_id', $user->id)
             ->orWhereHas('vehicle', fn ($vehicle) => $vehicle->where('assigned_driver_id', $user->id));
 
