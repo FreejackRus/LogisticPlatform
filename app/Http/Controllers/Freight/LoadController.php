@@ -582,6 +582,7 @@ class LoadController extends Controller
                 'type' => $latestEvent->type,
                 'created_at' => $this->formatDateTime($latestEvent->created_at),
             ] : null,
+            'workflow' => $this->shipperWorkflowPayload($load, $acceptedBid),
             'urls' => [
                 'show' => route('loads.show', $load),
                 'edit' => route('loads.edit', $load),
@@ -589,6 +590,65 @@ class LoadController extends Controller
                 'candidates' => route('loads.bids', $load),
                 'delivery' => $acceptedBid ? route('loads.delivery', $load) : null,
             ],
+        ];
+    }
+
+    private function shipperWorkflowPayload(FreightLoad $load, ?Bid $acceptedBid): array
+    {
+        $pendingBids = (int) ($load->pending_bids_count ?? $load->bids->where('status', 'pending')->count());
+
+        if ($load->status === 'draft') {
+            return [
+                'state' => 'finish_draft',
+                'tone' => 'muted',
+                'action_url' => route('loads.edit', $load),
+            ];
+        }
+
+        if ($load->status === 'active' && $pendingBids > 0) {
+            return [
+                'state' => 'review_bids',
+                'tone' => 'attention',
+                'action_url' => route('loads.bids', $load),
+            ];
+        }
+
+        if ($load->status === 'active') {
+            return [
+                'state' => 'waiting_bids',
+                'tone' => 'muted',
+                'action_url' => route('loads.show', $load),
+            ];
+        }
+
+        if ($load->status === 'in_progress' && $load->delivery_stage === 'delivered_pending_confirmation') {
+            return [
+                'state' => 'confirm_delivery',
+                'tone' => 'attention',
+                'action_url' => $acceptedBid ? route('loads.delivery', $load) : route('loads.show', $load),
+            ];
+        }
+
+        if ($load->status === 'in_progress') {
+            return [
+                'state' => 'track_delivery',
+                'tone' => 'active',
+                'action_url' => $acceptedBid ? route('loads.delivery', $load) : route('loads.show', $load),
+            ];
+        }
+
+        if ($load->status === 'completed') {
+            return [
+                'state' => 'completed',
+                'tone' => 'success',
+                'action_url' => $acceptedBid ? route('loads.delivery', $load) : route('loads.show', $load),
+            ];
+        }
+
+        return [
+            'state' => $load->status === 'cancelled' ? 'cancelled' : 'archived',
+            'tone' => 'muted',
+            'action_url' => route('loads.show', $load),
         ];
     }
 

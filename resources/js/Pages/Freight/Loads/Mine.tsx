@@ -35,6 +35,11 @@ type Load = {
         type: string;
         created_at?: string | null;
     } | null;
+    workflow: {
+        state: string;
+        tone: 'active' | 'attention' | 'muted' | 'success';
+        action_url: string;
+    };
     urls: {
         show: string;
         edit: string;
@@ -92,6 +97,35 @@ const statusTone: Record<string, string> = {
     completed: 'border-slate-200 bg-slate-50 text-slate-700',
     cancelled: 'border-rose-200 bg-rose-50 text-rose-800',
     archived: 'border-slate-200 bg-slate-50 text-slate-700',
+};
+
+const workflowLabels: Record<string, string> = {
+    finish_draft: 'Заполните и опубликуйте заказ',
+    review_bids: 'Разберите новые отклики',
+    waiting_bids: 'Ожидаем отклики перевозчиков',
+    track_delivery: 'Контролируйте выполнение рейса',
+    confirm_delivery: 'Подтвердите завершение доставки',
+    completed: 'Доставка завершена',
+    cancelled: 'Заказ отменён',
+    archived: 'Заказ в архиве',
+};
+
+const workflowActionLabels: Record<string, string> = {
+    finish_draft: 'Редактировать',
+    review_bids: 'Открыть отклики',
+    waiting_bids: 'Открыть заказ',
+    track_delivery: 'Открыть доставку',
+    confirm_delivery: 'Подтвердить',
+    completed: 'Открыть итоги',
+    cancelled: 'Открыть заказ',
+    archived: 'Открыть заказ',
+};
+
+const workflowTone: Record<Load['workflow']['tone'], string> = {
+    active: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+    attention: 'border-amber-200 bg-amber-50 text-amber-950',
+    muted: 'border-slate-200 bg-slate-50 text-slate-800',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-950',
 };
 
 export default function Mine({ loads, currentStatus, statusCounts }: Props) {
@@ -201,6 +235,18 @@ function LoadCard({ load }: { load: Load }) {
                     <div className="text-muted-foreground">{load.body_type || 'кузов не указан'}</div>
                     <div className="text-muted-foreground">Просмотры: {load.views_count}</div>
                 </div>
+            </div>
+
+            <div className={`mt-4 flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between ${workflowTone[load.workflow.tone]}`}>
+                <div>
+                    <p className="text-xs text-muted-foreground">Следующий шаг</p>
+                    <p className="font-medium">{workflowLabels[load.workflow.state] ?? load.workflow.state}</p>
+                </div>
+                <Button asChild size="sm" variant={load.workflow.tone === 'attention' ? 'default' : 'secondary'}>
+                    <Link href={load.workflow.action_url}>
+                        {workflowActionLabels[load.workflow.state] ?? 'Открыть'}
+                    </Link>
+                </Button>
             </div>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-3">

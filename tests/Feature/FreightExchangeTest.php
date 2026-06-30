@@ -938,6 +938,16 @@ it('shows shipper bid workspace and accepts a candidate', function () {
         'contract_accepted_at' => now(),
     ]);
 
+    $this->actingAs($shipper)
+        ->get(route('loads.mine'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Freight/Loads/Mine')
+            ->where('loads.data.0.id', $load->id)
+            ->where('loads.data.0.workflow.state', 'review_bids')
+            ->where('loads.data.0.workflow.action_url', route('loads.bids', $load))
+        );
+
     $this->actingAs($otherShipper)
         ->get(route('loads.bids', $load))
         ->assertForbidden();
