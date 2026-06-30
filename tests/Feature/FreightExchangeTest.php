@@ -838,13 +838,7 @@ it('shows carrier bid workspace by fleet role', function () {
 
     $this->actingAs($driver)
         ->get(route('bids.mine', ['status' => 'pending']))
-        ->assertOk()
-        ->assertInertia(fn (AssertableInertia $page) => $page
-            ->component('Freight/Carrier/Bids')
-            ->where('currentStatus', 'pending')
-            ->where('bids.data.0.id', $companyBid->id)
-            ->has('bids.data', 1)
-        );
+        ->assertRedirect(route('carrier.deliveries.index'));
 
     $this->actingAs($driver)
         ->get(route('loads.show', $load))

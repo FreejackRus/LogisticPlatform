@@ -21,9 +21,14 @@ use Inertia\Response;
 
 class BidController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
         $user = $request->user();
+
+        if ($user->isCarrierCompanyDriver()) {
+            return redirect()->route('carrier.deliveries.index');
+        }
+
         $status = $request->validate([
             'status' => ['nullable', 'in:all,pending,accepted,rejected,cancelled'],
         ])['status'] ?? 'all';
