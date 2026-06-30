@@ -857,7 +857,7 @@ it('shows carrier bid workspace by fleet role', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('Freight/Carrier/Bids')
             ->where('bids.data.0.id', $companyBid->id)
-            ->where('bids.data.0.can_cancel', false)
+            ->where('bids.data.0.can_cancel', true)
             ->has('bids.data', 1)
             ->where('statusCounts.pending', 1)
         );
@@ -889,7 +889,11 @@ it('shows carrier bid workspace by fleet role', function () {
         ])
         ->assertForbidden();
 
-    $this->actingAs($owner)
+    $this->actingAs($driver)
+        ->patch(route('bids.cancel', $companyBid))
+        ->assertForbidden();
+
+    $this->actingAs($manager)
         ->patch(route('bids.cancel', $companyBid))
         ->assertRedirect();
 

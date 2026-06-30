@@ -4,7 +4,7 @@ import { useFreightTranslation } from '@/hooks/useFreightTranslation';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatDateRange } from '@/lib/utils';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { FileText, MapPinned, PackageOpen, Phone } from 'lucide-react';
+import { MapPinned, PackageOpen } from 'lucide-react';
 
 type Delivery = {
     bid_id: number;
@@ -166,18 +166,10 @@ function DeliveryRow({ delivery }: { delivery: Delivery }) {
                 )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-col">
+            <div className="grid gap-2 sm:flex sm:flex-col">
                 <Button asChild>
                     <Link href={delivery.load.carrier_delivery_url}>{t('carrier_deliveries.open_delivery')}</Link>
                 </Button>
-                {delivery.load.contact_phone && (
-                    <Button asChild variant="secondary">
-                        <a href={`tel:${delivery.load.contact_phone}`}>
-                            <Phone className="size-4" />
-                            {t('carrier_deliveries.call')}
-                        </a>
-                    </Button>
-                )}
                 {delivery.load.status === 'in_progress' && (
                     <Button asChild variant="secondary">
                         <Link href={delivery.load.route_url}>
@@ -186,12 +178,6 @@ function DeliveryRow({ delivery }: { delivery: Delivery }) {
                         </Link>
                     </Button>
                 )}
-                <Button asChild variant="secondary">
-                    <a href={delivery.load.contract_url}>
-                        <FileText className="size-4" />
-                        {t('carrier_deliveries.contract')}
-                    </a>
-                </Button>
             </div>
         </article>
     );

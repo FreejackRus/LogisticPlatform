@@ -18,6 +18,16 @@ class BidPolicy
 
     public function cancel(User $user, Bid $bid): bool
     {
-        return $user->id === $bid->carrier_id && $bid->status === 'pending';
+        if ($bid->status !== 'pending') {
+            return false;
+        }
+
+        if ($user->id === $bid->carrier_id) {
+            return true;
+        }
+
+        return $user->canManageCarrierFleet()
+            && $bid->company_id
+            && $user->activeCarrierCompany()?->id === $bid->company_id;
     }
 }
