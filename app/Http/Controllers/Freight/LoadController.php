@@ -21,8 +21,12 @@ use Inertia\Response;
 
 class LoadController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
+        if ($request->user()?->isCarrierCompanyDriver()) {
+            return redirect()->route('carrier.deliveries.index');
+        }
+
         $filters = $request->validate([
             'q' => ['nullable', 'string', 'max:255'],
             'from_city' => ['nullable', 'string', 'max:255'],

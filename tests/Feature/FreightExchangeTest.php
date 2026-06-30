@@ -425,6 +425,10 @@ it('separates carrier fleet managers from company drivers', function () {
             'is_location_visible' => true,
         ])
         ->assertForbidden();
+
+    $this->actingAs($driver)
+        ->get(route('loads.index'))
+        ->assertRedirect(route('carrier.deliveries.index'));
 });
 
 it('prevents admins from marking vehicles with active deliveries as available', function () {

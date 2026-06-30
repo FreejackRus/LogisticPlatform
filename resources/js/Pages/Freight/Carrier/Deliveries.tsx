@@ -3,7 +3,7 @@ import { Button } from '@/Components/ui/button';
 import { useFreightTranslation } from '@/hooks/useFreightTranslation';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { formatDateRange } from '@/lib/utils';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { FileText, MapPinned, PackageOpen, Phone } from 'lucide-react';
 
 type Delivery = {
@@ -51,6 +51,8 @@ const statusTone: Record<string, string> = {
 
 export default function Deliveries({ deliveries, filters, stats }: Props) {
     const t = useFreightTranslation();
+    const { auth } = usePage().props as any;
+    const canFindLoads = !auth?.user?.is_carrier_company_driver;
 
     const setStatus = (status: string) => {
         router.get(route('carrier.deliveries.index'), { status }, { preserveScroll: true });
@@ -92,9 +94,11 @@ export default function Deliveries({ deliveries, filters, stats }: Props) {
                         <p className="mt-1 text-sm text-muted-foreground">
                             {t('carrier_deliveries.empty_text')}
                         </p>
-                        <Button asChild className="mt-4" variant="secondary">
-                            <Link href={route('loads.index')}>{t('carrier_deliveries.find_loads')}</Link>
-                        </Button>
+                        {canFindLoads && (
+                            <Button asChild className="mt-4" variant="secondary">
+                                <Link href={route('loads.index')}>{t('carrier_deliveries.find_loads')}</Link>
+                            </Button>
+                        )}
                     </div>
                 ) : (
                     <div className="grid gap-3">

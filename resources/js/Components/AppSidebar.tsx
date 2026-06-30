@@ -37,12 +37,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const user = auth?.user;
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
-    const publicItems: NavItem[] = [
-        { href: route('loads.index'), label: 'Грузы', icon: Package, active: route().current('loads.index') || route().current('loads.show') },
-        { href: route('map'), label: 'Карта', icon: Map, active: route().current('map') },
-    ];
-
     if (!user) {
+        const publicItems: NavItem[] = [
+            { href: route('loads.index'), label: 'Грузы', icon: Package, active: route().current('loads.index') || route().current('loads.show') },
+            { href: route('map'), label: 'Карта', icon: Map, active: route().current('map') },
+        ];
+
         return (
             <Sidebar collapsible="icon" {...props}>
                 <SidebarHeader>
@@ -80,6 +80,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
 
     const userRole = user.role ?? '';
+    const isCarrierCompanyDriver = Boolean(user.is_carrier_company_driver);
+    const publicItems: NavItem[] = [
+        ...(!isCarrierCompanyDriver
+            ? [{ href: route('loads.index'), label: 'Грузы', icon: Package, active: route().current('loads.index') || route().current('loads.show') }]
+            : []),
+        { href: route('map'), label: 'Карта', icon: Map, active: route().current('map') },
+    ];
     const roleHomeRoute = userRole === 'admin'
         ? route('admin.freight.index')
         : userRole === 'dispatcher'
@@ -114,7 +121,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         });
     }
 
-    if (userRole === 'shipper' || (userRole === 'carrier' && !user.is_carrier_company_driver)) {
+    if (userRole === 'shipper' || (userRole === 'carrier' && !isCarrierCompanyDriver)) {
         items.push({
             href: route('freight.company.edit'),
             label: 'Компания',
@@ -141,22 +148,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
 
     if (userRole === 'carrier') {
-        items.push(
-            {
-                href: route('carrier.deliveries.index'),
-                label: 'Мои перевозки',
-                icon: ClipboardList,
-                active: route().current('carrier.deliveries.*'),
-            },
-            {
+        items.push({
+            href: route('carrier.deliveries.index'),
+            label: 'Мои перевозки',
+            icon: ClipboardList,
+            active: route().current('carrier.deliveries.*'),
+        });
+
+        if (!isCarrierCompanyDriver) {
+            items.push({
                 href: route('bids.mine'),
                 label: 'Мои отклики',
                 icon: MessageCircle,
                 active: route().current('bids.mine'),
-            },
+            });
+        }
+
+        items.push(
             {
                 href: route('vehicles.mine'),
-                label: user.is_carrier_company_driver ? 'Назначенный транспорт' : 'Мой транспорт',
+                label: isCarrierCompanyDriver ? 'Назначенный транспорт' : 'Мой транспорт',
                 icon: Truck,
                 active: route().current('vehicles.mine'),
             },
