@@ -1050,6 +1050,8 @@ class LoadController extends Controller
             return;
         }
 
+        $action = $type === 'load_cancelled' ? 'bid' : 'delivery';
+
         collect([$bid->carrier_id, $bid->vehicle?->assigned_driver_id])
             ->filter()
             ->unique()
@@ -1058,7 +1060,7 @@ class LoadController extends Controller
                 'type' => $type,
                 'title' => $title,
                 'message' => $message,
-                'data_json' => ['bid_id' => $bid->id, 'load_id' => $load->id, 'action' => 'delivery'],
+                'data_json' => ['bid_id' => $bid->id, 'load_id' => $load->id, 'action' => $action],
             ]));
     }
 

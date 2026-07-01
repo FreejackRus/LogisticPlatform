@@ -1126,6 +1126,70 @@ it('cancels pending bids when a shipper cancels an active load', function () {
         );
 });
 
+it('routes accepted carrier cancellation notifications to the bid workspace', function () {
+    $shipper = freightUser('shipper', ['email' => 'accepted-cancel-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $carrier = freightUser('carrier', ['email' => 'accepted-cancel-carrier@example.com']);
+    $driver = freightUser('carrier', ['email' => 'accepted-cancel-driver@example.com']);
+    $carrierCompany = freightCompany($carrier, 'carrier');
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Accepted cancellation load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'in_progress',
+        'delivery_stage' => 'carrier_selected',
+        'bids_count' => 1,
+    ]);
+
+    $vehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'assigned_driver_id' => $driver->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Accepted cancellation truck',
+        'is_available' => false,
+    ]);
+
+    $bid = Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'accepted',
+        'accepted_at' => now(),
+        'contract_accepted_at' => now(),
+        'contract_signed_at' => now(),
+    ]);
+
+    $this->actingAs($shipper)
+        ->patch(route('loads.cancel', $load))
+        ->assertRedirect();
+
+    $notification = FreightNotification::query()
+        ->where('user_id', $carrier->id)
+        ->where('type', 'load_cancelled')
+        ->latest()
+        ->firstOrFail();
+
+    expect($notification->data_json['action'])->toBe('bid')
+        ->and($vehicle->refresh()->is_available)->toBeTrue();
+
+    $this->actingAs($carrier)
+        ->get(route('notifications.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('notifications.data.0.type', 'load_cancelled')
+            ->where('notifications.data.0.action_url', route('bids.mine'))
+            ->where('notifications.data.0.action_label', 'Открыть мои отклики')
+        );
+
+    $this->actingAs($carrier)
+        ->get(route('notifications.open', $notification))
+        ->assertRedirect(route('bids.mine'));
+});
+
 it('creates fixed-price responses without rejecting other carriers', function () {
     Storage::fake('public');
 
