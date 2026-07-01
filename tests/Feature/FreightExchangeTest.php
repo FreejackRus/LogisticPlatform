@@ -992,6 +992,75 @@ it('shows carrier bid workspace by fleet role', function () {
     expect($companyBid->refresh()->status)->toBe('cancelled');
 });
 
+it('notifies carrier company stakeholders when a company bid is accepted', function () {
+    $shipper = freightUser('shipper', ['email' => 'company-accepted-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $owner = freightUser('carrier', ['email' => 'company-accepted-owner@example.com']);
+    $manager = freightUser('carrier', ['email' => 'company-accepted-manager@example.com']);
+    $driver = freightUser('carrier', ['email' => 'company-accepted-driver@example.com']);
+
+    $company = freightCompany($owner, 'carrier');
+    $company->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $company->carrierMembers()->syncWithoutDetaching([
+        $manager->id => ['role' => 'manager', 'status' => 'active', 'joined_at' => now()],
+        $driver->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
+    ]);
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Company accepted load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'active',
+        'bids_count' => 1,
+    ]);
+
+    $vehicle = Vehicle::create([
+        'carrier_id' => $owner->id,
+        'assigned_driver_id' => $driver->id,
+        'company_id' => $company->id,
+        'title' => 'Company accepted truck',
+        'is_available' => true,
+    ]);
+
+    $bid = Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $manager->id,
+        'company_id' => $company->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'pending',
+        'contract_accepted_at' => now(),
+    ]);
+
+    $this->actingAs($shipper)
+        ->patch(route('bids.accept', $bid))
+        ->assertRedirect();
+
+    foreach ([$owner, $manager, $driver] as $recipient) {
+        expect(FreightNotification::query()
+            ->where('user_id', $recipient->id)
+            ->where('type', 'bid_accepted')
+            ->where('data_json->bid_id', $bid->id)
+            ->count())->toBe(1);
+    }
+
+    $this->actingAs($owner)
+        ->get(route('notifications.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('notifications.data.0.type', 'bid_accepted')
+            ->where('notifications.data.0.action_url', route('carrier.deliveries.show', $bid))
+            ->where('notifications.data.0.action_label', 'Открыть рейс')
+        );
+
+    expect($load->refresh()->status)->toBe('in_progress')
+        ->and($vehicle->refresh()->is_available)->toBeFalse();
+});
+
 it('shows shipper bid workspace and accepts a candidate', function () {
     $shipper = freightUser('shipper', ['email' => 'candidate-shipper@example.com']);
     $otherShipper = freightUser('shipper', ['email' => 'candidate-other-shipper@example.com']);

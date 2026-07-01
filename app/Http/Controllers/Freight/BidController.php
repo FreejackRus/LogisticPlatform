@@ -170,7 +170,7 @@ class BidController extends Controller
 
     public function accept(Request $request, Bid $bid, AuditLogService $audit): RedirectResponse
     {
-        $bid->loadMissing(['freightLoad', 'carrier', 'vehicle.assignedDriver']);
+        $bid->loadMissing(['freightLoad', 'carrier', 'company', 'vehicle.assignedDriver']);
         Gate::authorize('accept', $bid);
 
         DB::transaction(function () use ($request, $bid, $audit) {
@@ -185,7 +185,7 @@ class BidController extends Controller
             $this->ensureVehicleCanServeLoad($vehicle, $bid->freightLoad);
 
             $rejectedBids = $bid->freightLoad->bids()
-                ->with('vehicle.assignedDriver')
+                ->with(['company', 'vehicle.assignedDriver'])
                 ->whereKeyNot($bid->id)
                 ->where('status', 'pending')
                 ->get();
@@ -216,28 +216,22 @@ class BidController extends Controller
                 'type' => 'carrier_selected',
             ]);
 
-            FreightNotification::create([
-                'user_id' => $bid->carrier_id,
-                'type' => 'bid_accepted',
-                'title' => 'Ваш отклик принят',
-                'message' => 'Грузовладелец выбрал ваш отклик на груз '.$bid->freightLoad->title.'.',
-                'data_json' => ['bid_id' => $bid->id, 'load_id' => $bid->load_id, 'action' => 'delivery'],
-            ]);
+            $this->bidNotificationRecipientIds($bid)->each(function ($userId) use ($bid): void {
+                $isAssignedDriver = $bid->vehicle?->assigned_driver_id === $userId && $bid->carrier_id !== $userId;
 
-            if ($bid->vehicle?->assigned_driver_id && $bid->vehicle->assigned_driver_id !== $bid->carrier_id) {
                 FreightNotification::create([
-                    'user_id' => $bid->vehicle->assigned_driver_id,
+                    'user_id' => $userId,
                     'type' => 'bid_accepted',
-                    'title' => 'Назначен рейс',
-                    'message' => 'Вас назначили водителем на груз '.$bid->freightLoad->title.'.',
+                    'title' => $isAssignedDriver ? 'Назначен рейс' : 'Ваш отклик принят',
+                    'message' => $isAssignedDriver
+                        ? 'Вас назначили водителем на груз '.$bid->freightLoad->title.'.'
+                        : 'Грузовладелец выбрал ваш отклик на груз '.$bid->freightLoad->title.'.',
                     'data_json' => ['bid_id' => $bid->id, 'load_id' => $bid->load_id, 'action' => 'delivery'],
                 ]);
-            }
+            });
 
             $rejectedBids->each(function (Bid $rejectedBid) use ($bid) {
-                collect([$rejectedBid->carrier_id, $rejectedBid->vehicle?->assigned_driver_id])
-                    ->filter()
-                    ->unique()
+                $this->bidNotificationRecipientIds($rejectedBid)
                     ->each(fn ($userId) => FreightNotification::create([
                         'user_id' => $userId,
                         'type' => 'bid_rejected',
@@ -251,6 +245,28 @@ class BidController extends Controller
         });
 
         return back()->with('status', 'Отклик принят.');
+    }
+
+    private function bidNotificationRecipientIds(Bid $bid)
+    {
+        $bid->loadMissing(['company', 'vehicle']);
+
+        $ids = collect([
+            $bid->carrier_id,
+            $bid->vehicle?->assigned_driver_id,
+            $bid->company?->user_id,
+        ]);
+
+        if ($bid->company) {
+            $ids = $ids->merge(
+                $bid->company->carrierMembers()
+                    ->wherePivot('status', 'active')
+                    ->wherePivot('role', 'manager')
+                    ->pluck('users.id'),
+            );
+        }
+
+        return $ids->filter()->unique()->values();
     }
 
     public function cancel(Request $request, Bid $bid): RedirectResponse
