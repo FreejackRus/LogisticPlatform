@@ -73,7 +73,7 @@ class DeliveryEventController extends Controller
         }
 
         if ($user->id === $load->shipper_id || $user->isAdmin() || $user->isDispatcher()) {
-            return DeliveryEvent::STAFF_EVENT_TYPES;
+            return DeliveryEvent::staffAvailableEventTypes($load->delivery_stage);
         }
 
         return [];

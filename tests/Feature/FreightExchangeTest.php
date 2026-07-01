@@ -1446,8 +1446,25 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('delivery.canComplete', true)
+            ->where('delivery.deliveryEventOptions.0', 'shipper_note')
+            ->has('delivery.deliveryEventOptions', 1)
             ->where('delivery.events.0.type', 'delivered_pending_confirmation')
         );
+
+    $this->actingAs($shipper)
+        ->get(route('loads.show', $load))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('load.delivery_event_options.0', 'shipper_note')
+            ->has('load.delivery_event_options', 1)
+        );
+
+    $this->actingAs($shipper)
+        ->post(route('loads.delivery-events.store', $load), [
+            'type' => 'issue_reported',
+            'note' => 'Too late for a problem event.',
+        ])
+        ->assertSessionHasErrors('type');
 
     $this->actingAs($shipper)
         ->patch(route('loads.complete', $load), [

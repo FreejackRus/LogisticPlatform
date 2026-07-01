@@ -56,6 +56,15 @@ class DeliveryEvent extends Model
         ]));
     }
 
+    public static function staffAvailableEventTypes(?string $currentStage): array
+    {
+        if (self::canConfirmDelivery($currentStage)) {
+            return ['shipper_note'];
+        }
+
+        return self::STAFF_EVENT_TYPES;
+    }
+
     public static function canConfirmDelivery(?string $currentStage): bool
     {
         return $currentStage === self::DELIVERY_CONFIRMATION_STAGE;

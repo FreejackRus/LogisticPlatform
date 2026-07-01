@@ -736,7 +736,7 @@ class LoadController extends Controller
             'canComplete' => (bool) request()->user()?->can('complete', $load),
             'canUpdateDelivery' => $load->status === 'in_progress',
             'deliveryEventOptions' => $load->status === 'in_progress'
-                ? DeliveryEvent::STAFF_EVENT_TYPES
+                ? DeliveryEvent::staffAvailableEventTypes($load->delivery_stage)
                 : [],
         ];
     }
@@ -911,7 +911,7 @@ class LoadController extends Controller
             'can_update_delivery' => $canCarrierUpdateDelivery || $canStaffUpdateDelivery,
             'delivery_event_options' => $canCarrierUpdateDelivery
                 ? DeliveryEvent::carrierAvailableEventTypes($load->delivery_stage)
-                : ($canStaffUpdateDelivery ? DeliveryEvent::STAFF_EVENT_TYPES : []),
+                : ($canStaffUpdateDelivery ? DeliveryEvent::staffAvailableEventTypes($load->delivery_stage) : []),
             'next_delivery_event' => $canCarrierUpdateDelivery
                 ? DeliveryEvent::nextCarrierEvent($load->delivery_stage)
                 : null,
