@@ -367,11 +367,23 @@ it('separates carrier fleet managers from company drivers', function () {
     $manager = freightUser('carrier', ['email' => 'fleet-manager@example.com']);
     $driver = freightUser('carrier', ['email' => 'fleet-driver@example.com']);
     $otherCarrier = freightUser('carrier', ['email' => 'outside-carrier@example.com']);
+    $freeManager = freightUser('carrier', ['email' => 'fleet-free-manager@example.com']);
+    $blockedCarrier = freightUser('carrier', ['email' => 'fleet-blocked@example.com', 'is_blocked' => true]);
+    $otherCompanyOwner = freightUser('carrier', ['email' => 'fleet-other-owner@example.com']);
+    $occupiedCarrier = freightUser('carrier', ['email' => 'fleet-occupied@example.com']);
 
     $company = freightCompany($owner, 'carrier');
     $company->update([
         'carrier_profile_type' => 'company',
         'allows_carrier_members' => true,
+    ]);
+    $otherCompany = freightCompany($otherCompanyOwner, 'carrier');
+    $otherCompany->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $otherCompany->carrierMembers()->syncWithoutDetaching([
+        $occupiedCarrier->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
     ]);
 
     $company->carrierMembers()->syncWithoutDetaching([
@@ -446,6 +458,45 @@ it('separates carrier fleet managers from company drivers', function () {
             'role' => 'manager',
         ])
         ->assertForbidden();
+
+    $this->actingAs($owner)
+        ->post(route('freight.company.carriers.store'), [
+            'email' => $freeManager->email,
+            'role' => 'manager',
+        ])
+        ->assertRedirect();
+
+    expect($company->carrierMembers()
+        ->where('users.id', $freeManager->id)
+        ->wherePivot('role', 'manager')
+        ->wherePivot('status', 'active')
+        ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $freeManager->id)
+            ->where('type', 'carrier_company_member_added')
+            ->where('data_json->company_id', $company->id)
+            ->exists())->toBeTrue();
+
+    $this->actingAs($owner)
+        ->post(route('freight.company.carriers.store'), [
+            'email' => $blockedCarrier->email,
+            'role' => 'driver',
+        ])
+        ->assertSessionHasErrors('email');
+
+    $this->actingAs($owner)
+        ->post(route('freight.company.carriers.store'), [
+            'email' => $otherCompanyOwner->email,
+            'role' => 'manager',
+        ])
+        ->assertSessionHasErrors('email');
+
+    $this->actingAs($owner)
+        ->post(route('freight.company.carriers.store'), [
+            'email' => $occupiedCarrier->email,
+            'role' => 'driver',
+        ])
+        ->assertSessionHasErrors('email');
 });
 
 it('prevents admins from marking vehicles with active deliveries as available', function () {

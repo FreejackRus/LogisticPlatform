@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -175,12 +176,49 @@ class CompanyController extends Controller
 
         $carrier = User::where('email', $data['email'])->where('role', 'carrier')->firstOrFail();
 
+        if ($carrier->id === $request->user()->id) {
+            throw ValidationException::withMessages([
+                'email' => 'Владелец компании уже управляет этим профилем.',
+            ]);
+        }
+
+        if (! $carrier->is_active || $carrier->is_blocked) {
+            throw ValidationException::withMessages([
+                'email' => 'Нельзя добавить заблокированного или неактивного перевозчика.',
+            ]);
+        }
+
+        if ($carrier->company && $carrier->company->id !== $company->id) {
+            throw ValidationException::withMessages([
+                'email' => 'Этот перевозчик уже является владельцем другой компании.',
+            ]);
+        }
+
+        $activeCompany = $carrier->carrierCompanies()
+            ->wherePivot('status', 'active')
+            ->whereKeyNot($company->id)
+            ->first();
+
+        if ($activeCompany) {
+            throw ValidationException::withMessages([
+                'email' => 'Этот перевозчик уже состоит в другой активной компании.',
+            ]);
+        }
+
         $company->carrierMembers()->syncWithoutDetaching([
             $carrier->id => [
                 'role' => $data['role'] ?? 'driver',
                 'status' => 'active',
                 'joined_at' => now(),
             ],
+        ]);
+
+        FreightNotification::create([
+            'user_id' => $carrier->id,
+            'type' => 'carrier_company_member_added',
+            'title' => 'Вы добавлены в компанию перевозчика',
+            'message' => 'Компания '.$company->name.' добавила вас как '.(($data['role'] ?? 'driver') === 'manager' ? 'менеджера' : 'водителя').'.',
+            'data_json' => ['company_id' => $company->id, 'action' => 'company'],
         ]);
 
         return back()->with('status', 'Перевозчик добавлен в компанию.');

@@ -260,7 +260,12 @@ export default function Edit({ company, options, isCarrier, canManageCarrierMemb
 
             {canManageCarrierMembers && (
                 <section className="mx-auto mb-8 grid max-w-6xl gap-4 px-4">
-                    <h2 className="text-base font-semibold">Перевозчики компании</h2>
+                    <div>
+                        <h2 className="text-base font-semibold">Перевозчики компании</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Добавляйте только активных перевозчиков без собственной компании и без участия в другой активной компании.
+                        </p>
+                    </div>
                     <form onSubmit={addMember} className="grid gap-3 rounded-md border p-4 md:grid-cols-[1fr_auto_auto]">
                         <Input
                             type="email"
@@ -278,7 +283,7 @@ export default function Edit({ company, options, isCarrier, canManageCarrierMemb
                             <option value="manager">Менеджер</option>
                         </select>
                         <Button disabled={memberForm.processing}>Добавить</Button>
-                        <InputError message={memberForm.errors.email} />
+                        <InputError className="md:col-span-3" message={memberForm.errors.email || memberForm.errors.role} />
                     </form>
                     <div className="grid gap-2">
                         {(company?.carrier_members ?? []).map((member) => (

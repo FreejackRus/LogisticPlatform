@@ -44,6 +44,7 @@ const typeLabels: Record<string, string> = {
     load_completed: 'Доставка завершена',
     company_moderation: 'Проверка компании',
     company_review_requested: 'Компания на проверке',
+    carrier_company_member_added: 'Компания перевозчика',
     policy_check: 'Системное',
 };
 
