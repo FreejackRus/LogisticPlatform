@@ -116,6 +116,7 @@ class NotificationController extends Controller
             'bid' => 'Открыть мои отклики',
             'load' => 'Открыть груз',
             'company' => 'Открыть профиль',
+            'company_review' => 'Открыть компанию',
             default => isset($data['dispatcher_connection_id'])
                 ? (($request->user()?->isDispatcher() || $request->user()?->isAdmin()) ? 'Открыть подбор' : 'Открыть груз')
                 : 'Открыть',
@@ -146,6 +147,12 @@ class NotificationController extends Controller
 
         if (($data['action'] ?? null) === 'company') {
             return route('freight.company.edit');
+        }
+
+        if (($data['action'] ?? null) === 'company_review' && isset($data['company_id'])) {
+            return ($request->user()?->isAdmin())
+                ? route('admin.freight.companies.show', $data['company_id'])
+                : route('freight.company.edit');
         }
 
         if (isset($data['dispatcher_connection_id'])) {

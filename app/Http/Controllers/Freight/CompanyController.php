@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Freight;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Models\FreightNotification;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -93,7 +94,7 @@ class CompanyController extends Controller
             $status = 'pending';
         }
 
-        Company::updateOrCreate(
+        $company = Company::updateOrCreate(
             ['user_id' => $user->id],
             [
                 ...$data,
@@ -110,8 +111,29 @@ class CompanyController extends Controller
                 'rejected_at' => $requiresReview ? null : $company?->rejected_at,
             ],
         );
+        $this->notifyAdminsAboutReviewRequest($company, $requiresReview);
 
         return back()->with('status', 'Компания сохранена.');
+    }
+
+    private function notifyAdminsAboutReviewRequest(Company $company, bool $requiresReview): void
+    {
+        if (! $requiresReview) {
+            return;
+        }
+
+        User::query()
+            ->where('role', 'admin')
+            ->where('is_active', true)
+            ->where('is_blocked', false)
+            ->get()
+            ->each(fn (User $admin) => FreightNotification::create([
+                'user_id' => $admin->id,
+                'type' => 'company_review_requested',
+                'title' => 'Компания ожидает проверки',
+                'message' => 'Компания '.$company->name.' обновила юридические данные и ожидает модерации.',
+                'data_json' => ['company_id' => $company->id, 'action' => 'company_review'],
+            ]));
     }
 
     public function addCarrierMember(Request $request): RedirectResponse

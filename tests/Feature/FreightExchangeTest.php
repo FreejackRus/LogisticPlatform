@@ -1743,6 +1743,7 @@ it('enforces freight model policies for ownership and workflow state', function 
     $carrier = freightUser('carrier');
     $otherCarrier = freightUser('carrier');
     $dispatcher = freightUser('dispatcher');
+    $admin = freightUser('admin', ['email' => 'policy-admin@example.com']);
     $shipperCompany = freightCompany($shipper, 'shipper');
     $carrierCompany = freightCompany($carrier, 'carrier');
 
@@ -1822,6 +1823,15 @@ it('enforces freight model policies for ownership and workflow state', function 
     expect($shipperCompany->refresh()->verification_status)->toBe('pending')
         ->and($shipperCompany->verification_comment)->toBeNull()
         ->and($shipperCompany->verified_at)->toBeNull();
+
+    $this->actingAs($admin)
+        ->get(route('notifications.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('notifications.data.0.type', 'company_review_requested')
+            ->where('notifications.data.0.action_url', route('admin.freight.companies.show', $shipperCompany))
+            ->where('notifications.data.0.action_label', 'Открыть компанию')
+        );
 
     $this->actingAs($shipper)
         ->patch(route('loads.publish', $cancelledLoad))

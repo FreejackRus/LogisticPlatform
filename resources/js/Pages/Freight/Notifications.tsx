@@ -43,6 +43,7 @@ const typeLabels: Record<string, string> = {
     load_cancelled: 'Груз отменён',
     load_completed: 'Доставка завершена',
     company_moderation: 'Проверка компании',
+    company_review_requested: 'Компания на проверке',
     policy_check: 'Системное',
 };
 
