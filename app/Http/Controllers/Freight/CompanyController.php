@@ -127,13 +127,34 @@ class CompanyController extends Controller
             ->where('is_active', true)
             ->where('is_blocked', false)
             ->get()
-            ->each(fn (User $admin) => FreightNotification::create([
-                'user_id' => $admin->id,
-                'type' => 'company_review_requested',
-                'title' => 'Компания ожидает проверки',
-                'message' => 'Компания '.$company->name.' обновила юридические данные и ожидает модерации.',
-                'data_json' => ['company_id' => $company->id, 'action' => 'company_review'],
-            ]));
+            ->each(function (User $admin) use ($company): void {
+                $payload = ['company_id' => $company->id, 'action' => 'company_review'];
+                $attributes = [
+                    'title' => 'Компания ожидает проверки',
+                    'message' => 'Компания '.$company->name.' обновила юридические данные и ожидает модерации.',
+                    'data_json' => $payload,
+                ];
+
+                $existing = FreightNotification::query()
+                    ->where('user_id', $admin->id)
+                    ->where('type', 'company_review_requested')
+                    ->where('is_read', false)
+                    ->where('data_json->company_id', $company->id)
+                    ->where('data_json->action', 'company_review')
+                    ->first();
+
+                if ($existing) {
+                    $existing->update($attributes);
+
+                    return;
+                }
+
+                FreightNotification::create([
+                    'user_id' => $admin->id,
+                    'type' => 'company_review_requested',
+                    ...$attributes,
+                ]);
+            });
     }
 
     public function addCarrierMember(Request $request): RedirectResponse

@@ -1833,6 +1833,27 @@ it('enforces freight model policies for ownership and workflow state', function 
             ->where('notifications.data.0.action_label', 'Открыть компанию')
         );
 
+    expect(FreightNotification::query()
+        ->where('user_id', $admin->id)
+        ->where('type', 'company_review_requested')
+        ->count())->toBe(1);
+
+    $this->actingAs($shipper)
+        ->post(route('freight.company.update'), [
+            'name' => 'Policy shipper company',
+            'inn' => '7700000002',
+            'bank_name' => 'Policy bank',
+            'bank_bik' => '044525225',
+            'bank_account' => '40702810000000000001',
+            'correspondent_account' => '30101810400000000225',
+        ])
+        ->assertRedirect();
+
+    expect(FreightNotification::query()
+        ->where('user_id', $admin->id)
+        ->where('type', 'company_review_requested')
+        ->count())->toBe(1);
+
     $this->actingAs($shipper)
         ->patch(route('loads.publish', $cancelledLoad))
         ->assertForbidden();
