@@ -599,6 +599,45 @@ it('keeps admin load moderation inside the delivery workflow', function () {
 
     expect($activeLoad->refresh()->status)->toBe('archived');
 
+    $adminCancelledLoad = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Admin cancelled active load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'active',
+        'bids_count' => 1,
+    ]);
+    $adminCancelledVehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Admin cancelled pending truck',
+        'is_available' => true,
+    ]);
+    $adminCancelledBid = Bid::create([
+        'load_id' => $adminCancelledLoad->id,
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'vehicle_id' => $adminCancelledVehicle->id,
+        'status' => 'pending',
+        'contract_accepted_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.freight.loads.update', $adminCancelledLoad), [
+            'status' => 'cancelled',
+        ])
+        ->assertRedirect();
+
+    expect($adminCancelledLoad->refresh()->status)->toBe('cancelled')
+        ->and($adminCancelledLoad->bids_count)->toBe(0)
+        ->and($adminCancelledBid->refresh()->status)->toBe('cancelled')
+        ->and(FreightNotification::query()
+            ->where('user_id', $carrier->id)
+            ->where('type', 'load_cancelled')
+            ->where('data_json->bid_id', $adminCancelledBid->id)
+            ->exists())->toBeTrue();
+
     $earlyLoad = FreightLoad::create([
         'shipper_id' => $shipper->id,
         'company_id' => $shipperCompany->id,
@@ -1022,6 +1061,69 @@ it('shows shipper bid workspace and accepts a candidate', function () {
 
     expect($bid->refresh()->status)->toBe('accepted')
         ->and($load->refresh()->status)->toBe('in_progress');
+});
+
+it('cancels pending bids when a shipper cancels an active load', function () {
+    $shipper = freightUser('shipper', ['email' => 'cancel-load-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $carrier = freightUser('carrier', ['email' => 'cancel-load-carrier@example.com']);
+    $driver = freightUser('carrier', ['email' => 'cancel-load-driver@example.com']);
+    $carrierCompany = freightCompany($carrier, 'carrier');
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Cancelled active load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'active',
+        'bids_count' => 1,
+    ]);
+
+    $vehicle = Vehicle::create([
+        'carrier_id' => $carrier->id,
+        'assigned_driver_id' => $driver->id,
+        'company_id' => $carrierCompany->id,
+        'title' => 'Cancel pending bid truck',
+        'is_available' => true,
+    ]);
+
+    $bid = Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $carrier->id,
+        'company_id' => $carrierCompany->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'pending',
+        'contract_accepted_at' => now(),
+    ]);
+
+    $this->actingAs($shipper)
+        ->patch(route('loads.cancel', $load))
+        ->assertRedirect();
+
+    expect($load->refresh()->status)->toBe('cancelled')
+        ->and($load->bids_count)->toBe(0)
+        ->and($bid->refresh()->status)->toBe('cancelled')
+        ->and($bid->cancelled_at)->not->toBeNull()
+        ->and(FreightNotification::query()
+            ->where('user_id', $carrier->id)
+            ->where('type', 'load_cancelled')
+            ->where('data_json->bid_id', $bid->id)
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $driver->id)
+            ->where('type', 'load_cancelled')
+            ->where('data_json->bid_id', $bid->id)
+            ->exists())->toBeTrue();
+
+    $this->actingAs($carrier)
+        ->get(route('bids.mine', ['status' => 'cancelled']))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('bids.data.0.id', $bid->id)
+            ->where('bids.data.0.status', 'cancelled')
+            ->where('statusCounts.cancelled', 1)
+        );
 });
 
 it('creates fixed-price responses without rejecting other carriers', function () {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Freight;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Bid;
 use App\Models\Company;
 use App\Models\Complaint;
 use App\Models\DeliveryEvent;
@@ -270,7 +271,11 @@ class AdminController extends Controller
 
         if (($data['status'] ?? null) === 'cancelled') {
             $load->loadMissing('bids.vehicle');
+            $this->cancelPendingBids($load);
             $this->releaseAcceptedVehicles($load);
+            $load->update([
+                'bids_count' => $load->bids()->whereIn('status', ['pending', 'accepted'])->count(),
+            ]);
         }
 
         $audit->record('load.moderated', $load, $old, $load->only(['status', 'is_urgent', 'is_featured']));
@@ -441,5 +446,34 @@ class AdminController extends Controller
             ->filter()
             ->unique('id')
             ->each(fn (Vehicle $vehicle) => $vehicle->update(['is_available' => true]));
+    }
+
+    private function cancelPendingBids(FreightLoad $load): void
+    {
+        $pendingBids = $load->bids->where('status', 'pending');
+
+        if ($pendingBids->isEmpty()) {
+            return;
+        }
+
+        $load->bids()
+            ->whereKey($pendingBids->pluck('id'))
+            ->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+            ]);
+
+        $pendingBids->each(function (Bid $bid) use ($load): void {
+            collect([$bid->carrier_id, $bid->vehicle?->assigned_driver_id])
+                ->filter()
+                ->unique()
+                ->each(fn ($userId) => FreightNotification::create([
+                    'user_id' => $userId,
+                    'type' => 'load_cancelled',
+                    'title' => 'Груз отменён',
+                    'message' => 'Груз '.$load->title.', по которому был ваш отклик, отменён администратором.',
+                    'data_json' => ['bid_id' => $bid->id, 'load_id' => $load->id, 'action' => 'bid'],
+                ]));
+        });
     }
 }

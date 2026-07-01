@@ -376,8 +376,13 @@ class LoadController extends Controller
     {
         Gate::authorize('cancel', $load);
 
-        $load->update(['status' => 'cancelled', 'cancelled_at' => now()]);
         $load->load('bids.vehicle');
+        $this->cancelPendingBids($load);
+        $load->update([
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+            'bids_count' => $load->bids()->whereIn('status', ['pending', 'accepted'])->count(),
+        ]);
         $this->releaseAcceptedVehicles($load);
         $this->notifyAcceptedBidUsers($load, 'load_cancelled', 'Груз отменён', 'Заказчик отменил груз '.$load->title.'.');
 
@@ -996,6 +1001,35 @@ class LoadController extends Controller
             ->filter()
             ->unique('id')
             ->each(fn (Vehicle $vehicle) => $vehicle->update(['is_available' => true]));
+    }
+
+    private function cancelPendingBids(FreightLoad $load): void
+    {
+        $pendingBids = $load->bids->where('status', 'pending');
+
+        if ($pendingBids->isEmpty()) {
+            return;
+        }
+
+        $load->bids()
+            ->whereKey($pendingBids->pluck('id'))
+            ->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+            ]);
+
+        $pendingBids->each(function (Bid $bid) use ($load): void {
+            collect([$bid->carrier_id, $bid->vehicle?->assigned_driver_id])
+                ->filter()
+                ->unique()
+                ->each(fn ($userId) => FreightNotification::create([
+                    'user_id' => $userId,
+                    'type' => 'load_cancelled',
+                    'title' => 'Груз отменён',
+                    'message' => 'Заказчик отменил груз '.$load->title.', по которому был ваш отклик.',
+                    'data_json' => ['bid_id' => $bid->id, 'load_id' => $load->id, 'action' => 'bid'],
+                ]));
+        });
     }
 
     private function formatDate($date): ?string
