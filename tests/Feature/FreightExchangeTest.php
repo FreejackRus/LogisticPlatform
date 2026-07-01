@@ -1598,6 +1598,8 @@ it('enforces vehicle eligibility for carrier responses and releases vehicles aft
         ])
         ->assertRedirect();
 
+    $carrierCargoPhotoPath = $bid->refresh()->carrier_cargo_photo_path;
+
     foreach ([
         'en_route_to_pickup',
         'arrived_pickup',
@@ -1621,6 +1623,14 @@ it('enforces vehicle eligibility for carrier responses and releases vehicles aft
 
     expect($eligibleVehicle->refresh()->is_available)->toBeTrue()
         ->and($load->refresh()->status)->toBe('completed');
+
+    $this->actingAs($carrier)
+        ->post(route('bids.carrier-photo', $bid), [
+            'carrier_cargo_photo' => UploadedFile::fake()->image('late-carrier-cargo.jpg', 900, 600),
+        ])
+        ->assertForbidden();
+
+    expect($bid->refresh()->carrier_cargo_photo_path)->toBe($carrierCargoPhotoPath);
 });
 
 it('allows dispatcher connections without changing load status automatically', function () {

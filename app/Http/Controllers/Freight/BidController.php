@@ -286,10 +286,11 @@ class BidController extends Controller
 
     public function uploadCarrierCargoPhoto(Request $request, Bid $bid, FreightMediaService $media): RedirectResponse
     {
-        $bid->loadMissing('vehicle');
+        $bid->loadMissing(['freightLoad', 'vehicle']);
 
         abort_unless(
             $bid->status === 'accepted'
+                && $bid->freightLoad?->status === 'in_progress'
                 && $request->user()
                 && $bid->canBeOperatedBy($request->user()),
             403,
