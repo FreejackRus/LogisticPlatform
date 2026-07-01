@@ -2113,6 +2113,8 @@ it('allows admins to moderate freight entities and complaints', function () {
             );
     }
 
+    $shipperCompany->update(['verification_status' => 'pending', 'verified_at' => null]);
+
     $this->actingAs($admin)
         ->patch(route('admin.freight.companies.update', $shipperCompany), [
             'verification_status' => 'verified',
@@ -2152,4 +2154,13 @@ it('allows admins to moderate freight entities and complaints', function () {
         ->and($vehicle->is_online)->toBeFalse()
         ->and($complaint->refresh()->status)->toBe('in_review')
         ->and($complaint->admin_comment)->toBe('Проверяем контакты.');
+
+    $this->actingAs($shipper)
+        ->get(route('notifications.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('notifications.data.0.type', 'company_moderation')
+            ->where('notifications.data.0.action_url', route('freight.company.edit'))
+            ->where('notifications.data.0.action_label', 'Открыть профиль')
+        );
 });

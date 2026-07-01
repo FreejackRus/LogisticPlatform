@@ -42,6 +42,7 @@ const typeLabels: Record<string, string> = {
     delivery_event: 'Этап доставки',
     load_cancelled: 'Груз отменён',
     load_completed: 'Доставка завершена',
+    company_moderation: 'Проверка компании',
     policy_check: 'Системное',
 };
 

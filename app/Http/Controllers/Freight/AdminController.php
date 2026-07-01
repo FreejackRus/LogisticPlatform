@@ -9,6 +9,7 @@ use App\Models\Complaint;
 use App\Models\DeliveryEvent;
 use App\Models\DispatcherConnection;
 use App\Models\FreightLoad;
+use App\Models\FreightNotification;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\AuditLogService;
@@ -196,8 +197,42 @@ class AdminController extends Controller
             $old,
             $company->only(['verification_status', 'verification_comment', 'is_blocked', 'verified_at', 'rejected_at']),
         );
+        $this->notifyCompanyOwnerAboutModeration($company, $old);
 
         return back()->with('status', 'Компания обновлена.');
+    }
+
+    private function notifyCompanyOwnerAboutModeration(Company $company, array $old): void
+    {
+        if (! $company->user_id) {
+            return;
+        }
+
+        $statusChanged = array_key_exists('verification_status', $old)
+            && ($old['verification_status'] ?? null) !== $company->verification_status;
+        $blockedChanged = array_key_exists('is_blocked', $old)
+            && (bool) ($old['is_blocked'] ?? false) !== (bool) $company->is_blocked;
+
+        if (! $statusChanged && ! $blockedChanged) {
+            return;
+        }
+
+        $statusTitle = match ($company->verification_status) {
+            'verified' => 'Профиль компании подтверждён',
+            'rejected' => 'Профиль компании отклонён',
+            'pending' => 'Профиль компании отправлен на проверку',
+            default => 'Статус проверки компании изменён',
+        };
+        $blockText = $company->is_blocked ? ' Профиль заблокирован модератором.' : '';
+        $commentText = $company->verification_comment ? ' Комментарий: '.$company->verification_comment : '';
+
+        FreightNotification::create([
+            'user_id' => $company->user_id,
+            'type' => 'company_moderation',
+            'title' => $company->is_blocked ? 'Профиль компании заблокирован' : $statusTitle,
+            'message' => trim('Модерация обновила статус компании '.$company->name.'.'.$blockText.$commentText),
+            'data_json' => ['company_id' => $company->id, 'action' => 'company'],
+        ]);
     }
 
     public function showCompany(Company $company): Response
