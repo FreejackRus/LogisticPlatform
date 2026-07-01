@@ -1038,6 +1038,8 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         ->and(Bid::count())->toBe(2)
         ->and(FreightNotification::where('user_id', $shipper->id)->exists())->toBeTrue();
 
+    $shipperNotification = FreightNotification::where('user_id', $shipper->id)->latest()->first();
+
     $this->actingAs($shipper)
         ->get(route('notifications.index'))
         ->assertOk()
@@ -1045,8 +1047,15 @@ it('creates fixed-price responses without rejecting other carriers', function ()
             ->where('auth.unread_notifications_count', 2)
             ->where('notifications.data.0.type', 'bid_created')
             ->where('notifications.data.0.action_url', route('loads.bids', $load))
+            ->where('notifications.data.0.open_url', route('notifications.open', $shipperNotification))
             ->where('notifications.data.0.action_label', 'Разобрать отклики')
         );
+
+    $this->actingAs($shipper)
+        ->get(route('notifications.open', $shipperNotification))
+        ->assertRedirect(route('loads.bids', $load));
+
+    expect($shipperNotification->refresh()->is_read)->toBeTrue();
 
     $this->actingAs($carrier)
         ->get(route('loads.show', $load))

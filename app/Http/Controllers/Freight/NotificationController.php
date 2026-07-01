@@ -63,6 +63,19 @@ class NotificationController extends Controller
         return back();
     }
 
+    public function open(Request $request, FreightNotification $notification): RedirectResponse
+    {
+        Gate::authorize('update', $notification);
+
+        if (! $notification->is_read) {
+            $notification->update(['is_read' => true, 'read_at' => now()]);
+        }
+
+        $actionUrl = $this->actionUrl($notification->data_json ?? [], $request);
+
+        return redirect()->to($actionUrl ?: route('notifications.index'));
+    }
+
     public function readAll(Request $request): RedirectResponse
     {
         Gate::authorize('viewAny', FreightNotification::class);
@@ -88,6 +101,7 @@ class NotificationController extends Controller
             'created_at' => $notification->created_at?->format('d.m.Y H:i'),
             'read_at' => $notification->read_at?->format('d.m.Y H:i'),
             'action_url' => $actionUrl,
+            'open_url' => $actionUrl ? route('notifications.open', $notification) : null,
             'action_label' => $actionUrl ? $this->actionLabel($data, $request) : null,
             'data' => $data,
         ];

@@ -88,6 +88,7 @@ Route::middleware('auth')->group(function () {
         ->name('api.map.accepted-route');
 
     Route::get('/notifications', [FreightNotificationController::class, 'index'])->name('notifications.index');
+    Route::get('/notifications/{notification}/open', [FreightNotificationController::class, 'open'])->name('notifications.open');
     Route::patch('/notifications/read-all', [FreightNotificationController::class, 'readAll'])->name('notifications.read-all');
     Route::patch('/notifications/{notification}/read', [FreightNotificationController::class, 'read'])->name('notifications.read');
     Route::get('/complaints', [FreightComplaintController::class, 'index'])->name('complaints.index');

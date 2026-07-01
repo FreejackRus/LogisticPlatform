@@ -14,6 +14,7 @@ type NotificationItem = {
     created_at?: string | null;
     read_at?: string | null;
     action_url?: string | null;
+    open_url?: string | null;
     action_label?: string | null;
 };
 
@@ -123,9 +124,9 @@ export default function Notifications({ notifications, filters, stats, types }: 
                                         <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
                                     </div>
                                     <div className="flex flex-wrap gap-2 md:justify-end">
-                                        {item.action_url && (
+                                        {item.open_url && (
                                             <Button asChild size="sm" variant="secondary">
-                                                <Link href={item.action_url}>
+                                                <Link href={item.open_url}>
                                                     <ExternalLink className="size-4" />
                                                     {item.action_label || 'Открыть'}
                                                 </Link>
