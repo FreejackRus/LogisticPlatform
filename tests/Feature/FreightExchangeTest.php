@@ -559,7 +559,15 @@ it('keeps admin load moderation inside the delivery workflow', function () {
     $shipper = freightUser('shipper', ['email' => 'admin-load-shipper@example.com']);
     $shipperCompany = freightCompany($shipper, 'shipper');
     $carrier = freightUser('carrier', ['email' => 'admin-load-carrier@example.com']);
+    $carrierManager = freightUser('carrier', ['email' => 'admin-load-carrier-manager@example.com']);
     $carrierCompany = freightCompany($carrier, 'carrier');
+    $carrierCompany->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $carrierCompany->carrierMembers()->syncWithoutDetaching([
+        $carrierManager->id => ['role' => 'manager', 'status' => 'active', 'joined_at' => now()],
+    ]);
 
     $draftLoad = FreightLoad::create([
         'shipper_id' => $shipper->id,
@@ -634,6 +642,11 @@ it('keeps admin load moderation inside the delivery workflow', function () {
         ->and($adminCancelledBid->refresh()->status)->toBe('cancelled')
         ->and(FreightNotification::query()
             ->where('user_id', $carrier->id)
+            ->where('type', 'load_cancelled')
+            ->where('data_json->bid_id', $adminCancelledBid->id)
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $carrierManager->id)
             ->where('type', 'load_cancelled')
             ->where('data_json->bid_id', $adminCancelledBid->id)
             ->exists())->toBeTrue();
@@ -1136,8 +1149,17 @@ it('cancels pending bids when a shipper cancels an active load', function () {
     $shipper = freightUser('shipper', ['email' => 'cancel-load-shipper@example.com']);
     $shipperCompany = freightCompany($shipper, 'shipper');
     $carrier = freightUser('carrier', ['email' => 'cancel-load-carrier@example.com']);
+    $manager = freightUser('carrier', ['email' => 'cancel-load-manager@example.com']);
     $driver = freightUser('carrier', ['email' => 'cancel-load-driver@example.com']);
     $carrierCompany = freightCompany($carrier, 'carrier');
+    $carrierCompany->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $carrierCompany->carrierMembers()->syncWithoutDetaching([
+        $manager->id => ['role' => 'manager', 'status' => 'active', 'joined_at' => now()],
+        $driver->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
+    ]);
 
     $load = FreightLoad::create([
         'shipper_id' => $shipper->id,
@@ -1181,6 +1203,11 @@ it('cancels pending bids when a shipper cancels an active load', function () {
             ->exists())->toBeTrue()
         ->and(FreightNotification::query()
             ->where('user_id', $driver->id)
+            ->where('type', 'load_cancelled')
+            ->where('data_json->bid_id', $bid->id)
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $manager->id)
             ->where('type', 'load_cancelled')
             ->where('data_json->bid_id', $bid->id)
             ->exists())->toBeTrue();

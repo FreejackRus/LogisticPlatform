@@ -216,7 +216,7 @@ class BidController extends Controller
                 'type' => 'carrier_selected',
             ]);
 
-            $this->bidNotificationRecipientIds($bid)->each(function ($userId) use ($bid): void {
+            $bid->notificationRecipientIds()->each(function ($userId) use ($bid): void {
                 $isAssignedDriver = $bid->vehicle?->assigned_driver_id === $userId && $bid->carrier_id !== $userId;
 
                 FreightNotification::create([
@@ -231,7 +231,7 @@ class BidController extends Controller
             });
 
             $rejectedBids->each(function (Bid $rejectedBid) use ($bid) {
-                $this->bidNotificationRecipientIds($rejectedBid)
+                $rejectedBid->notificationRecipientIds()
                     ->each(fn ($userId) => FreightNotification::create([
                         'user_id' => $userId,
                         'type' => 'bid_rejected',
@@ -245,28 +245,6 @@ class BidController extends Controller
         });
 
         return back()->with('status', 'Отклик принят.');
-    }
-
-    private function bidNotificationRecipientIds(Bid $bid)
-    {
-        $bid->loadMissing(['company', 'vehicle']);
-
-        $ids = collect([
-            $bid->carrier_id,
-            $bid->vehicle?->assigned_driver_id,
-            $bid->company?->user_id,
-        ]);
-
-        if ($bid->company) {
-            $ids = $ids->merge(
-                $bid->company->carrierMembers()
-                    ->wherePivot('status', 'active')
-                    ->wherePivot('role', 'manager')
-                    ->pluck('users.id'),
-            );
-        }
-
-        return $ids->filter()->unique()->values();
     }
 
     public function cancel(Request $request, Bid $bid): RedirectResponse

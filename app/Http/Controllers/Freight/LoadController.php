@@ -376,7 +376,7 @@ class LoadController extends Controller
     {
         Gate::authorize('cancel', $load);
 
-        $load->load('bids.vehicle');
+        $load->load('bids.company', 'bids.vehicle');
         $this->cancelPendingBids($load);
         $load->update([
             'status' => 'cancelled',
@@ -1019,9 +1019,7 @@ class LoadController extends Controller
             ]);
 
         $pendingBids->each(function (Bid $bid) use ($load): void {
-            collect([$bid->carrier_id, $bid->vehicle?->assigned_driver_id])
-                ->filter()
-                ->unique()
+            $bid->notificationRecipientIds()
                 ->each(fn ($userId) => FreightNotification::create([
                     'user_id' => $userId,
                     'type' => 'load_cancelled',
@@ -1052,9 +1050,7 @@ class LoadController extends Controller
 
         $action = $type === 'load_cancelled' ? 'bid' : 'delivery';
 
-        collect([$bid->carrier_id, $bid->vehicle?->assigned_driver_id])
-            ->filter()
-            ->unique()
+        $bid->notificationRecipientIds()
             ->each(fn ($userId) => FreightNotification::create([
                 'user_id' => $userId,
                 'type' => $type,

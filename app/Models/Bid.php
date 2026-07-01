@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Collection;
 
 class Bid extends Model
 {
@@ -68,5 +69,27 @@ class Bid extends Model
         }
 
         return $this->carrier_id === $user->id;
+    }
+
+    public function notificationRecipientIds(): Collection
+    {
+        $this->loadMissing(['company', 'vehicle']);
+
+        $ids = collect([
+            $this->carrier_id,
+            $this->vehicle?->assigned_driver_id,
+            $this->company?->user_id,
+        ]);
+
+        if ($this->company) {
+            $ids = $ids->merge(
+                $this->company->carrierMembers()
+                    ->wherePivot('status', 'active')
+                    ->wherePivot('role', 'manager')
+                    ->pluck('users.id'),
+            );
+        }
+
+        return $ids->filter()->unique()->values();
     }
 }

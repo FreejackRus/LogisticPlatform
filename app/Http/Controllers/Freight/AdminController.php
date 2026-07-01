@@ -270,7 +270,7 @@ class AdminController extends Controller
         $load->update([...$data, ...$dates]);
 
         if (($data['status'] ?? null) === 'cancelled') {
-            $load->loadMissing('bids.vehicle');
+            $load->loadMissing('bids.company', 'bids.vehicle');
             $this->cancelPendingBids($load);
             $this->releaseAcceptedVehicles($load);
             $load->update([
@@ -464,9 +464,7 @@ class AdminController extends Controller
             ]);
 
         $pendingBids->each(function (Bid $bid) use ($load): void {
-            collect([$bid->carrier_id, $bid->vehicle?->assigned_driver_id])
-                ->filter()
-                ->unique()
+            $bid->notificationRecipientIds()
                 ->each(fn ($userId) => FreightNotification::create([
                     'user_id' => $userId,
                     'type' => 'load_cancelled',
