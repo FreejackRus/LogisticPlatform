@@ -13,10 +13,19 @@ export interface User {
     carrier_member_role?: 'driver' | 'manager' | null;
     can_manage_carrier_fleet?: boolean;
     is_carrier_company_driver?: boolean;
+    has_verified_business_profile?: boolean;
+    business_company?: {
+        id: number;
+        name: string;
+        verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected';
+        is_blocked?: boolean;
+    } | null;
     active_carrier_company?: {
         id: number;
         name: string;
         carrier_profile_type?: 'individual' | 'company' | null;
+        verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected';
+        is_blocked?: boolean;
     } | null;
 }
 

@@ -29,7 +29,9 @@ class FreightLoadPolicy
 
     public function publish(User $user, FreightLoad $load): bool
     {
-        return $this->update($user, $load) && in_array($load->status, ['draft', 'cancelled'], true);
+        return $this->update($user, $load)
+            && $user->hasVerifiedBusinessProfile()
+            && in_array($load->status, ['draft', 'cancelled'], true);
     }
 
     public function cancel(User $user, FreightLoad $load): bool
@@ -57,6 +59,7 @@ class FreightLoadPolicy
     {
         return $user->isCarrier()
             && $user->canManageCarrierFleet()
+            && $user->hasVerifiedBusinessProfile()
             && $load->status === 'active'
             && $load->shipper_id !== $user->id;
     }

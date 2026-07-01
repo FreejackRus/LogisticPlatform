@@ -140,6 +140,15 @@ class User extends Authenticatable
         return $this->isCarrier() && ! $this->isCarrierCompanyDriver();
     }
 
+    public function hasVerifiedBusinessProfile(): bool
+    {
+        $company = $this->isCarrier() ? $this->activeCarrierCompany() : $this->company;
+
+        return (bool) $company
+            && $company->verification_status === 'verified'
+            && ! $company->is_blocked;
+    }
+
     public function bids(): HasMany
     {
         return $this->hasMany(Bid::class, 'carrier_id');

@@ -1823,6 +1823,28 @@ it('enforces freight model policies for ownership and workflow state', function 
         ->and($shipperCompany->verification_comment)->toBeNull()
         ->and($shipperCompany->verified_at)->toBeNull();
 
+    $this->actingAs($shipper)
+        ->patch(route('loads.publish', $cancelledLoad))
+        ->assertForbidden();
+
+    $this->actingAs($shipper)
+        ->post(route('loads.store'), [
+            'title' => 'Blocked publish load',
+            'loading_city' => 'Moscow',
+            'unloading_city' => 'Kazan',
+            'publish' => true,
+        ])
+        ->assertForbidden();
+
+    $carrierCompany->update(['verification_status' => 'pending']);
+
+    $this->actingAs($carrier)
+        ->post(route('bids.store', $load), [
+            'vehicle_id' => $vehicle->id,
+            'contract_accepted' => true,
+        ])
+        ->assertForbidden();
+
     $notification = FreightNotification::create([
         'user_id' => $shipper->id,
         'type' => 'policy_check',

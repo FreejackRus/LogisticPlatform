@@ -233,6 +233,12 @@ class LoadController extends Controller
         $publish = $request->boolean('publish');
         unset($data['publish'], $data['cargo_photo']);
 
+        abort_if(
+            $publish && ! $user->hasVerifiedBusinessProfile(),
+            403,
+            'Для публикации груза необходимо заполнить и подтвердить профиль компании.',
+        );
+
         $loading = $geocoding->geocodeCity($data['loading_city'] ?? null, $data['loading_address'] ?? null);
         $unloading = $geocoding->geocodeCity($data['unloading_city'] ?? null, $data['unloading_address'] ?? null);
         $cargoPhoto = $this->storePhoto($request, 'cargo_photo', 'loads', $media);
