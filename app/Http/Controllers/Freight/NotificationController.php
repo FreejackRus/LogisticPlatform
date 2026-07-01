@@ -88,8 +88,23 @@ class NotificationController extends Controller
             'created_at' => $notification->created_at?->format('d.m.Y H:i'),
             'read_at' => $notification->read_at?->format('d.m.Y H:i'),
             'action_url' => $actionUrl,
+            'action_label' => $actionUrl ? $this->actionLabel($data, $request) : null,
             'data' => $data,
         ];
+    }
+
+    private function actionLabel(array $data, Request $request): string
+    {
+        return match ($data['action'] ?? null) {
+            'delivery' => 'Открыть рейс',
+            'shipper_delivery' => 'Контролировать доставку',
+            'bids' => 'Разобрать отклики',
+            'bid' => 'Открыть мои отклики',
+            'load' => 'Открыть груз',
+            default => isset($data['dispatcher_connection_id'])
+                ? (($request->user()?->isDispatcher() || $request->user()?->isAdmin()) ? 'Открыть подбор' : 'Открыть груз')
+                : 'Открыть',
+        };
     }
 
     private function actionUrl(array $data, Request $request): ?string

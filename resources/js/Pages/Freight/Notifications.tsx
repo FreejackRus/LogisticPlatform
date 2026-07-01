@@ -14,6 +14,7 @@ type NotificationItem = {
     created_at?: string | null;
     read_at?: string | null;
     action_url?: string | null;
+    action_label?: string | null;
 };
 
 type Props = {
@@ -126,7 +127,7 @@ export default function Notifications({ notifications, filters, stats, types }: 
                                             <Button asChild size="sm" variant="secondary">
                                                 <Link href={item.action_url}>
                                                     <ExternalLink className="size-4" />
-                                                    Открыть
+                                                    {item.action_label || 'Открыть'}
                                                 </Link>
                                             </Button>
                                         )}

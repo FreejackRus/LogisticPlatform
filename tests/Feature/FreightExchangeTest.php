@@ -1044,6 +1044,7 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('notifications.data.0.type', 'bid_created')
             ->where('notifications.data.0.action_url', route('loads.bids', $load))
+            ->where('notifications.data.0.action_label', 'Разобрать отклики')
         );
 
     $this->actingAs($carrier)
@@ -1075,6 +1076,7 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('notifications.data.0.type', 'bid_rejected')
             ->where('notifications.data.0.action_url', route('bids.mine'))
+            ->where('notifications.data.0.action_label', 'Открыть мои отклики')
         );
 
     $this->actingAs($carrier)
@@ -1110,6 +1112,7 @@ it('creates fixed-price responses without rejecting other carriers', function ()
             ->where('notifications.data', fn ($notifications) => collect($notifications)->contains(
                 fn ($notification) => $notification['type'] === 'delivery_event'
                     && $notification['action_url'] === route('loads.delivery', $load)
+                    && $notification['action_label'] === 'Контролировать доставку'
             ))
         );
 
