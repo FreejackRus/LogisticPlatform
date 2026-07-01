@@ -344,6 +344,7 @@ class BidController extends Controller
             'contract_accepted_at' => $this->formatDateTime($bid->contract_accepted_at),
             'contract_signed_at' => $this->formatDateTime($bid->contract_signed_at),
             'can_cancel' => $user->can('cancel', $bid),
+            'workflow' => $this->carrierBidWorkflowPayload($bid),
             'load' => [
                 'id' => $load->id,
                 'title' => $load->title,
@@ -383,6 +384,49 @@ class BidController extends Controller
                 'id' => $bid->carrier?->id,
                 'name' => $bid->carrier?->name,
             ],
+        ];
+    }
+
+    private function carrierBidWorkflowPayload(Bid $bid): array
+    {
+        $load = $bid->freightLoad;
+
+        if ($bid->status === 'pending') {
+            return [
+                'state' => 'waiting_shipper',
+                'tone' => 'muted',
+                'action_url' => route('loads.show', $load),
+            ];
+        }
+
+        if ($bid->status === 'accepted' && in_array($load->status, ['in_progress', 'completed'], true)) {
+            return [
+                'state' => $load->status === 'completed' ? 'completed' : 'operate_delivery',
+                'tone' => $load->status === 'completed' ? 'success' : 'active',
+                'action_url' => route('carrier.deliveries.show', $bid),
+            ];
+        }
+
+        if ($bid->status === 'accepted') {
+            return [
+                'state' => 'accepted_waiting_start',
+                'tone' => 'attention',
+                'action_url' => route('loads.show', $load),
+            ];
+        }
+
+        if ($bid->status === 'rejected') {
+            return [
+                'state' => 'rejected',
+                'tone' => 'muted',
+                'action_url' => route('loads.index'),
+            ];
+        }
+
+        return [
+            'state' => 'cancelled',
+            'tone' => 'muted',
+            'action_url' => route('loads.index'),
         ];
     }
 

@@ -16,6 +16,11 @@ type Bid = {
     contract_accepted_at?: string | null;
     contract_signed_at?: string | null;
     can_cancel: boolean;
+    workflow: {
+        state: string;
+        tone: 'active' | 'attention' | 'muted' | 'success';
+        action_url: string;
+    };
     load: {
         id: number;
         title: string;
@@ -82,6 +87,31 @@ const loadTone: Record<string, string> = {
     in_progress: 'border-emerald-200 bg-emerald-50 text-emerald-800',
     completed: 'border-slate-200 bg-slate-50 text-slate-700',
     cancelled: 'border-rose-200 bg-rose-50 text-rose-800',
+};
+
+const workflowLabels: Record<string, string> = {
+    waiting_shipper: 'Ожидайте решения заказчика',
+    accepted_waiting_start: 'Отклик принят, ждём запуска рейса',
+    operate_delivery: 'Перейдите в рабочую карточку рейса',
+    completed: 'Рейс завершён',
+    rejected: 'Заказчик выбрал другого перевозчика',
+    cancelled: 'Отклик отменён',
+};
+
+const workflowActionLabels: Record<string, string> = {
+    waiting_shipper: 'Открыть груз',
+    accepted_waiting_start: 'Открыть груз',
+    operate_delivery: 'Открыть рейс',
+    completed: 'Открыть итоги',
+    rejected: 'Найти груз',
+    cancelled: 'Найти груз',
+};
+
+const workflowTone: Record<Bid['workflow']['tone'], string> = {
+    active: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+    attention: 'border-amber-200 bg-amber-50 text-amber-950',
+    muted: 'border-slate-200 bg-slate-50 text-slate-800',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-950',
 };
 
 export default function Bids({ bids, currentStatus, statusCounts }: Props) {
@@ -230,6 +260,18 @@ function BidCard({ bid }: { bid: Bid }) {
                         </Button>
                     )}
                 </div>
+            </div>
+
+            <div className={`mt-4 flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between ${workflowTone[bid.workflow.tone]}`}>
+                <div>
+                    <p className="text-xs text-muted-foreground">Следующий шаг</p>
+                    <p className="font-medium">{workflowLabels[bid.workflow.state] ?? bid.workflow.state}</p>
+                </div>
+                <Button asChild size="sm" variant={bid.workflow.tone === 'active' ? 'default' : 'secondary'}>
+                    <Link href={bid.workflow.action_url}>
+                        {workflowActionLabels[bid.workflow.state] ?? 'Открыть'}
+                    </Link>
+                </Button>
             </div>
 
             <div className="mt-4 grid gap-3 lg:grid-cols-3">

@@ -858,6 +858,8 @@ it('shows carrier bid workspace by fleet role', function () {
             ->component('Freight/Carrier/Bids')
             ->where('bids.data.0.id', $companyBid->id)
             ->where('bids.data.0.can_cancel', true)
+            ->where('bids.data.0.workflow.state', 'waiting_shipper')
+            ->where('bids.data.0.workflow.action_url', route('loads.show', $load))
             ->has('bids.data', 1)
             ->where('statusCounts.pending', 1)
         );
