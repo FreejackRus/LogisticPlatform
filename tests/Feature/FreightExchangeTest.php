@@ -1042,6 +1042,7 @@ it('creates fixed-price responses without rejecting other carriers', function ()
         ->get(route('notifications.index'))
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('auth.unread_notifications_count', 2)
             ->where('notifications.data.0.type', 'bid_created')
             ->where('notifications.data.0.action_url', route('loads.bids', $load))
             ->where('notifications.data.0.action_label', 'Разобрать отклики')

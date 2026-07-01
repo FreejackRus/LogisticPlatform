@@ -30,11 +30,13 @@ type NavItem = {
     label: string;
     icon: React.ElementType;
     active: boolean;
+    badge?: number;
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const { auth } = usePage().props as any;
     const user = auth?.user;
+    const unreadNotificationsCount = Number(auth?.unread_notifications_count ?? 0);
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
     if (!user) {
@@ -186,6 +188,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             label: 'Уведомления',
             icon: Bell,
             active: route().current('notifications.index'),
+            badge: unreadNotificationsCount,
         },
         {
             href: route('complaints.index'),
@@ -240,6 +243,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                 <Link href={item.href} prefetch>
                                     <item.icon />
                                     <span>{item.label}</span>
+                                    {item.badge ? (
+                                        <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-xs font-medium text-primary-foreground">
+                                            {item.badge > 99 ? '99+' : item.badge}
+                                        </span>
+                                    ) : null}
                                 </Link>
                             </SidebarMenuButton>
                         ))}

@@ -36,6 +36,9 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $user ? UserResource::make($user) : null,
+                'unread_notifications_count' => $user
+                    ? $user->freightNotifications()->where('is_read', false)->count()
+                    : 0,
                 'permissions' => [],
             ],
             'app' => [
