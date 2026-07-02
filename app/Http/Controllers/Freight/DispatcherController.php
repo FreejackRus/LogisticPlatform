@@ -156,7 +156,9 @@ class DispatcherController extends Controller
 
         $load = FreightLoad::with('company')->findOrFail($data['load_id']);
         Gate::authorize('dispatch', $load);
-        $vehicle = ! empty($data['vehicle_id']) ? Vehicle::with(['company', 'carrier'])->findOrFail($data['vehicle_id']) : null;
+        $vehicle = ! empty($data['vehicle_id'])
+            ? Vehicle::with(['company.carrierMembers', 'carrier', 'assignedDriver'])->findOrFail($data['vehicle_id'])
+            : null;
         $carrierId = $data['carrier_id'] ?? $vehicle?->carrier_id;
 
         if (! $carrierId) {
@@ -202,15 +204,14 @@ class DispatcherController extends Controller
             'data_json' => ['dispatcher_connection_id' => $connection->id],
         ]);
 
-        if ($carrierId) {
-            FreightNotification::create([
-                'user_id' => $carrierId,
+        $this->dispatcherConnectionRecipientIds((int) $carrierId, $vehicle)
+            ->each(fn ($userId) => FreightNotification::create([
+                'user_id' => $userId,
                 'type' => 'dispatcher_connection',
                 'title' => 'Диспетчер подобрал груз',
                 'message' => trim((($data['carrier_message'] ?? null) ?: 'Для вашего транспорта предложен груз '.$load->title.'.').' '.config('freight.notification_disclaimer')),
                 'data_json' => ['dispatcher_connection_id' => $connection->id],
-            ]);
-        }
+            ]));
 
         $audit->record('dispatcher_connection.created', $connection, null, ['status' => $connection->status]);
 
@@ -254,6 +255,26 @@ class DispatcherController extends Controller
                 'vehicle_id' => implode(' ', $errors),
             ]);
         }
+    }
+
+    private function dispatcherConnectionRecipientIds(int $carrierId, ?Vehicle $vehicle)
+    {
+        $ids = collect([
+            $carrierId,
+            $vehicle?->assigned_driver_id,
+            $vehicle?->company?->user_id,
+        ]);
+
+        if ($vehicle?->company) {
+            $ids = $ids->merge(
+                $vehicle->company->carrierMembers()
+                    ->wherePivot('status', 'active')
+                    ->wherePivot('role', 'manager')
+                    ->pluck('users.id'),
+            );
+        }
+
+        return $ids->filter()->unique()->values();
     }
 
     private function ensureNoOpenConnectionDuplicate(FreightLoad $load, int $carrierId, ?int $vehicleId): void

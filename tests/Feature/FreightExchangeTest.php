@@ -2075,8 +2075,18 @@ it('allows dispatcher connections without changing load status automatically', f
     $shipper = freightUser('shipper');
     $shipperCompany = freightCompany($shipper, 'shipper');
     $carrier = freightUser('carrier');
+    $carrierManager = freightUser('carrier', ['email' => 'dispatcher-carrier-manager@example.com']);
+    $driver = freightUser('carrier', ['email' => 'dispatcher-carrier-driver@example.com']);
     $carrierCompany = freightCompany($carrier, 'carrier');
-    $carrierCompany->update(['verification_status' => 'verified']);
+    $carrierCompany->update([
+        'verification_status' => 'verified',
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $carrierCompany->carrierMembers()->syncWithoutDetaching([
+        $carrierManager->id => ['role' => 'manager', 'status' => 'active', 'joined_at' => now()],
+        $driver->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
+    ]);
     $badCarrier = freightUser('carrier', ['email' => 'dispatcher-bad-carrier@example.com']);
     $badCarrierCompany = freightCompany($badCarrier, 'carrier');
     $load = FreightLoad::create([
@@ -2094,6 +2104,7 @@ it('allows dispatcher connections without changing load status automatically', f
     ]);
     $vehicle = Vehicle::create([
         'carrier_id' => $carrier->id,
+        'assigned_driver_id' => $driver->id,
         'company_id' => $carrierCompany->id,
         'title' => 'Reefer',
         'body_type' => 'reefer',
@@ -2134,6 +2145,14 @@ it('allows dispatcher connections without changing load status automatically', f
         ->and($load->refresh()->status)->toBe('active');
 
     $connection = DispatcherConnection::first();
+
+    foreach ([$carrier, $carrierManager, $driver] as $recipient) {
+        expect(FreightNotification::query()
+            ->where('user_id', $recipient->id)
+            ->where('type', 'dispatcher_connection')
+            ->where('data_json->dispatcher_connection_id', $connection->id)
+            ->count())->toBe(1);
+    }
 
     $this->actingAs($dispatcher)
         ->post(route('dispatcher.connections.store'), [
