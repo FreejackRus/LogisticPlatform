@@ -1274,6 +1274,7 @@ it('shows shipper bid workspace and accepts a candidate', function () {
         'status' => 'pending',
         'comment' => 'Ready to load tomorrow.',
         'contract_accepted_at' => now(),
+        'carrier_cargo_photo_path' => 'bid-cargo/pending-candidate.jpg',
     ]);
 
     $this->actingAs($shipper)
@@ -1298,6 +1299,7 @@ it('shows shipper bid workspace and accepts a candidate', function () {
             ->where('load.id', $load->id)
             ->where('bids.0.id', $bid->id)
             ->where('bids.0.can_accept', true)
+            ->where('bids.0.carrier_cargo_photo_url', null)
             ->where('canAcceptBids', true)
         );
 
@@ -1307,6 +1309,15 @@ it('shows shipper bid workspace and accepts a candidate', function () {
 
     expect($bid->refresh()->status)->toBe('accepted')
         ->and($load->refresh()->status)->toBe('in_progress');
+
+    $this->actingAs($shipper)
+        ->get(route('loads.bids', $load))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('bids.0.id', $bid->id)
+            ->where('bids.0.carrier_cargo_photo_url', '/storage/bid-cargo/pending-candidate.jpg')
+            ->where('canAcceptBids', false)
+        );
 });
 
 it('cancels pending bids when a shipper cancels an active load', function () {

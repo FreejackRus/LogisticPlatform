@@ -773,7 +773,7 @@ class LoadController extends Controller
             'contract_accepted_at' => $this->formatDateTime($bid->contract_accepted_at),
             'contract_signed_at' => $this->formatDateTime($bid->contract_signed_at),
             'can_accept' => $load->status === 'active' && $bid->status === 'pending',
-            'carrier_cargo_photo_url' => $this->publicUrl($bid->carrier_cargo_photo_path),
+            'carrier_cargo_photo_url' => $this->visibleCarrierCargoPhotoUrl($bid),
             'carrier' => [
                 'id' => $bid->carrier?->id,
                 'name' => $bid->carrier?->name,
@@ -889,7 +889,7 @@ class LoadController extends Controller
                 ] : null,
                 'contract_accepted_at' => $this->formatDateTime($bid->contract_accepted_at),
                 'contract_signed_at' => $this->formatDateTime($bid->contract_signed_at),
-                'carrier_cargo_photo_url' => $this->publicUrl($bid->carrier_cargo_photo_path),
+                'carrier_cargo_photo_url' => $this->visibleCarrierCargoPhotoUrl($bid),
                 'can_upload_carrier_cargo_photo' => $user
                     && $bid->canBeOperatedBy($user)
                     && $bid->status === 'accepted'
@@ -938,6 +938,15 @@ class LoadController extends Controller
     private function publicUrl(?string $path): ?string
     {
         return $path ? '/storage/'.ltrim($path, '/') : null;
+    }
+
+    private function visibleCarrierCargoPhotoUrl(Bid $bid): ?string
+    {
+        if ($bid->status !== 'accepted') {
+            return null;
+        }
+
+        return $this->publicUrl($bid->carrier_cargo_photo_path);
     }
 
     private function visibleBidsFor(FreightLoad $load, ?User $user)
