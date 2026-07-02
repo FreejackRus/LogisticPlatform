@@ -73,7 +73,12 @@ it('creates company load vehicle and map objects', function () {
 
     $carrier = freightUser('carrier');
     $carrierCompany = freightCompany($carrier, 'carrier');
-    $carrierCompany->update(['verification_status' => 'verified']);
+    $carrier->update(['phone' => '+7 900 222 33 44']);
+    $carrierCompany->update([
+        'verification_status' => 'verified',
+        'phone' => '+7 900 555 66 77',
+        'email' => 'carrier-company@example.com',
+    ]);
 
     $this->actingAs($carrier)
         ->post(route('vehicles.store'), [
@@ -106,6 +111,19 @@ it('creates company load vehicle and map objects', function () {
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('vehicle.photo_url', '/storage/'.$vehicle->photo_path)
+            ->where('canSeeContacts', false)
+            ->where('vehicle.company.phone', null)
+            ->where('vehicle.company.email', null)
+            ->where('vehicle.carrier.phone', null)
+        );
+
+    $this->get(route('vehicles.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('canSeeContacts', false)
+            ->where('vehicles.data.0.company.phone', null)
+            ->where('vehicles.data.0.company.email', null)
+            ->where('vehicles.data.0.carrier.phone', null)
         );
 
     $this->actingAs($carrier)

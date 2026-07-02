@@ -72,8 +72,14 @@ class VehicleController extends Controller
             default => $query->latest('is_online')->latest('last_location_at')->latest(),
         };
 
+        $canSeeContacts = $this->canSeeVehicleContacts($request);
+        $canSeePreciseLocation = $this->canSeePreciseVehicleLocation($request);
+
         return Inertia::render('Freight/Vehicles/Catalog', [
-            'vehicles' => $query->paginate(20)->withQueryString(),
+            'vehicles' => $query
+                ->paginate(20)
+                ->withQueryString()
+                ->through(fn (Vehicle $vehicle) => $this->vehiclePublicPayload($vehicle, $canSeeContacts, $canSeePreciseLocation)),
             'filters' => $filters,
             'filterOptions' => [
                 'bodyTypes' => Vehicle::query()
@@ -88,7 +94,7 @@ class VehicleController extends Controller
                 'total' => Vehicle::query()->where('is_available', true)->count(),
                 'online' => Vehicle::query()->where('is_available', true)->where('is_online', true)->count(),
             ],
-            'canSeeContacts' => (bool) $request->user(),
+            'canSeeContacts' => $canSeeContacts,
         ]);
     }
 
@@ -129,15 +135,12 @@ class VehicleController extends Controller
 
         $vehicle->load(['carrier', 'company', 'assignedDriver']);
 
+        $canSeeContacts = $this->canSeeVehicleContacts($request);
+        $canSeePreciseLocation = $this->canSeePreciseVehicleLocation($request);
+
         return Inertia::render('Freight/Vehicles/Show', [
-            'vehicle' => [
-                ...$this->vehiclePayload($vehicle),
-                'photo_url' => $this->publicUrl($vehicle->photo_path),
-                'company' => $vehicle->company,
-                'carrier' => $vehicle->carrier,
-                'assigned_driver' => $vehicle->assignedDriver,
-            ],
-            'canSeeContacts' => (bool) $request->user(),
+            'vehicle' => $this->vehiclePublicPayload($vehicle, $canSeeContacts, $canSeePreciseLocation, includeDetails: true),
+            'canSeeContacts' => $canSeeContacts,
         ]);
     }
 
@@ -332,6 +335,71 @@ class VehicleController extends Controller
             'created_at' => $this->formatDateTime($vehicle->created_at),
             'updated_at' => $this->formatDateTime($vehicle->updated_at),
         ];
+    }
+
+    private function vehiclePublicPayload(
+        Vehicle $vehicle,
+        bool $canSeeContacts,
+        bool $canSeePreciseLocation,
+        bool $includeDetails = false,
+    ): array {
+        $payload = [
+            'id' => $vehicle->id,
+            'title' => $vehicle->title,
+            'vehicle_type' => $vehicle->vehicle_type,
+            'body_type' => $vehicle->body_type,
+            'registration_number' => $vehicle->registration_number,
+            'capacity_kg' => $vehicle->capacity_kg,
+            'volume_m3' => $vehicle->volume_m3,
+            'length_m' => $vehicle->length_m,
+            'width_m' => $vehicle->width_m,
+            'height_m' => $vehicle->height_m,
+            'current_city' => $vehicle->current_city,
+            'current_region' => $vehicle->current_region,
+            'current_lat' => $canSeePreciseLocation ? $vehicle->current_lat : null,
+            'current_lng' => $canSeePreciseLocation ? $vehicle->current_lng : null,
+            'is_available' => (bool) $vehicle->is_available,
+            'is_online' => (bool) $vehicle->is_online,
+            'is_location_visible' => (bool) $vehicle->is_location_visible,
+            'photo_url' => $this->publicUrl($vehicle->photo_path),
+            'last_location_at' => $this->formatDateTime($vehicle->last_location_at),
+            'company' => $vehicle->company ? [
+                'id' => $vehicle->company->id,
+                'name' => $vehicle->company->name,
+                'phone' => $canSeeContacts ? $vehicle->company->phone : null,
+                'email' => $canSeeContacts ? $vehicle->company->email : null,
+                'verification_status' => $vehicle->company->verification_status,
+            ] : null,
+            'carrier' => $vehicle->carrier ? [
+                'id' => $vehicle->carrier->id,
+                'name' => $vehicle->carrier->name,
+                'phone' => $canSeeContacts ? $vehicle->carrier->phone : null,
+                'email' => $canSeeContacts ? $vehicle->carrier->email : null,
+            ] : null,
+        ];
+
+        if ($includeDetails) {
+            $payload['description'] = $vehicle->description;
+            $payload['created_at'] = $this->formatDateTime($vehicle->created_at);
+            $payload['updated_at'] = $this->formatDateTime($vehicle->updated_at);
+            $payload['assigned_driver'] = $canSeeContacts && $vehicle->assignedDriver ? [
+                'id' => $vehicle->assignedDriver->id,
+                'name' => $vehicle->assignedDriver->name,
+                'email' => $vehicle->assignedDriver->email,
+            ] : null;
+        }
+
+        return $payload;
+    }
+
+    private function canSeeVehicleContacts(Request $request): bool
+    {
+        return (bool) $request->user();
+    }
+
+    private function canSeePreciseVehicleLocation(Request $request): bool
+    {
+        return (bool) $request->user();
     }
 
     private function formatDate($date): ?string
