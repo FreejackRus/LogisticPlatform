@@ -1118,6 +1118,91 @@ it('notifies carrier company stakeholders when a company bid is accepted', funct
         ->and($vehicle->refresh()->is_available)->toBeFalse();
 });
 
+it('shows delivery details on load card to carrier company managers', function () {
+    $shipper = freightUser('shipper', ['email' => 'manager-load-card-shipper@example.com']);
+    $shipperCompany = freightCompany($shipper, 'shipper');
+    $owner = freightUser('carrier', ['email' => 'manager-load-card-owner@example.com']);
+    $manager = freightUser('carrier', ['email' => 'manager-load-card-manager@example.com']);
+    $driver = freightUser('carrier', ['email' => 'manager-load-card-driver@example.com']);
+    $outsideCarrier = freightUser('carrier', ['email' => 'manager-load-card-outside@example.com']);
+
+    $company = freightCompany($owner, 'carrier');
+    $company->update([
+        'carrier_profile_type' => 'company',
+        'allows_carrier_members' => true,
+    ]);
+    $company->carrierMembers()->syncWithoutDetaching([
+        $manager->id => ['role' => 'manager', 'status' => 'active', 'joined_at' => now()],
+        $driver->id => ['role' => 'driver', 'status' => 'active', 'joined_at' => now()],
+    ]);
+
+    $load = FreightLoad::create([
+        'shipper_id' => $shipper->id,
+        'company_id' => $shipperCompany->id,
+        'title' => 'Manager delivery card load',
+        'loading_city' => 'Moscow',
+        'unloading_city' => 'Kazan',
+        'status' => 'in_progress',
+        'delivery_stage' => 'arrived_pickup',
+        'price' => 85000,
+        'contact_phone' => '+7 900 777 77 77',
+        'contact_email' => 'manager-card-shipper@example.com',
+        'delivery_confirmation_token' => 'manager-load-card-token',
+        'delivery_confirmation_code' => '456789',
+    ]);
+
+    $vehicle = Vehicle::create([
+        'carrier_id' => $owner->id,
+        'assigned_driver_id' => $driver->id,
+        'company_id' => $company->id,
+        'title' => 'Manager card truck',
+        'is_available' => false,
+    ]);
+
+    $bid = Bid::create([
+        'load_id' => $load->id,
+        'carrier_id' => $owner->id,
+        'company_id' => $company->id,
+        'vehicle_id' => $vehicle->id,
+        'status' => 'accepted',
+        'accepted_at' => now(),
+        'contract_accepted_at' => now(),
+        'contract_signed_at' => now(),
+    ]);
+
+    DeliveryEvent::create([
+        'load_id' => $load->id,
+        'bid_id' => $bid->id,
+        'actor_id' => $driver->id,
+        'type' => 'arrived_pickup',
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('loads.show', $load))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('canSeeContacts', true)
+            ->where('load.contact_phone', '+7 900 777 77 77')
+            ->where('load.contact_email', 'manager-card-shipper@example.com')
+            ->where('load.contract_url', route('loads.contract', $load))
+            ->where('load.delivery_confirmation.code', '456789')
+            ->where('load.delivery_events.0.type', 'arrived_pickup')
+            ->where('load.can_update_delivery', false)
+            ->where('load.delivery_event_options', [])
+        );
+
+    $this->actingAs($outsideCarrier)
+        ->get(route('loads.show', $load))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('canSeeContacts', false)
+            ->where('load.contact_phone', null)
+            ->where('load.contract_url', null)
+            ->where('load.delivery_confirmation', null)
+            ->where('load.delivery_events', [])
+        );
+});
+
 it('shows shipper bid workspace and accepts a candidate', function () {
     $shipper = freightUser('shipper', ['email' => 'candidate-shipper@example.com']);
     $otherShipper = freightUser('shipper', ['email' => 'candidate-other-shipper@example.com']);

@@ -818,11 +818,8 @@ class LoadController extends Controller
         $acceptedBid = $this->acceptedContractBid($load);
         $visibleBids = $this->visibleBidsFor($load, $user);
         $canViewContract = $acceptedBid && $this->canViewContract($user, $load, $acceptedBid);
-        $canSeeDeliveryConfirmation = $user
-            && ($user->isAdmin()
-                || $user->isDispatcher()
-                || $user->id === $load->shipper_id
-                || $load->bids->contains(fn ($bid) => ($bid->carrier_id === $user->id || $bid->vehicle?->assigned_driver_id === $user->id) && $bid->status === 'accepted'));
+        $canSeeDeliveryConfirmation = $acceptedBid
+            && $this->canViewContract($user, $load, $acceptedBid);
         $canCarrierUpdateDelivery = $user
             && $acceptedBid
             && $acceptedBid->canBeOperatedBy($user)
