@@ -1022,7 +1022,31 @@ it('shows carrier bid workspace by fleet role', function () {
         ->patch(route('bids.cancel', $companyBid))
         ->assertRedirect();
 
-    expect($companyBid->refresh()->status)->toBe('cancelled');
+    expect($companyBid->refresh()->status)->toBe('cancelled')
+        ->and(FreightNotification::query()
+            ->where('user_id', $shipper->id)
+            ->where('type', 'bid_cancelled')
+            ->where('data_json->bid_id', $companyBid->id)
+            ->where('data_json->action', 'bids')
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $owner->id)
+            ->where('type', 'bid_cancelled')
+            ->where('data_json->bid_id', $companyBid->id)
+            ->where('data_json->action', 'bid')
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $driver->id)
+            ->where('type', 'bid_cancelled')
+            ->where('data_json->bid_id', $companyBid->id)
+            ->where('data_json->action', 'bid')
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $manager->id)
+            ->where('type', 'bid_cancelled')
+            ->where('data_json->bid_id', $companyBid->id)
+            ->where('data_json->action', 'bid')
+            ->exists())->toBeFalse();
 });
 
 it('notifies carrier company stakeholders when a company bid is accepted', function () {

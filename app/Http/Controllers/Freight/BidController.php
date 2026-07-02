@@ -8,6 +8,7 @@ use App\Models\DeliveryEvent;
 use App\Models\DispatcherConnection;
 use App\Models\FreightLoad;
 use App\Models\FreightNotification;
+use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\AuditLogService;
 use App\Services\FreightMediaService;
@@ -251,6 +252,8 @@ class BidController extends Controller
     {
         Gate::authorize('cancel', $bid);
 
+        $bid->loadMissing(['freightLoad', 'company', 'vehicle']);
+
         $bid->update(['status' => 'cancelled', 'cancelled_at' => now()]);
         $bid->freightLoad()->update([
             'bids_count' => $bid->freightLoad->bids()->whereIn('status', ['pending', 'accepted'])->count(),
@@ -264,7 +267,22 @@ class BidController extends Controller
             'data_json' => ['bid_id' => $bid->id, 'load_id' => $bid->load_id, 'action' => 'bids'],
         ]);
 
+        $this->notifyCarrierStakeholdersAboutBidCancellation($bid, $request->user());
+
         return back()->with('status', 'Отклик отменен.');
+    }
+
+    private function notifyCarrierStakeholdersAboutBidCancellation(Bid $bid, ?User $actor): void
+    {
+        $bid->notificationRecipientIds()
+            ->reject(fn ($userId) => $actor && (int) $userId === (int) $actor->id)
+            ->each(fn ($userId) => FreightNotification::create([
+                'user_id' => $userId,
+                'type' => 'bid_cancelled',
+                'title' => 'Отклик отменен',
+                'message' => 'Отклик компании на груз '.$bid->freightLoad->title.' был отменен.',
+                'data_json' => ['bid_id' => $bid->id, 'load_id' => $bid->load_id, 'action' => 'bid'],
+            ]));
     }
 
     private function ensureVehicleCanServeLoad(Vehicle $vehicle, FreightLoad $load): void
