@@ -19,6 +19,7 @@ type Vehicle = {
     current_city?: string;
     photo_url?: string | null;
     assigned_driver?: { id: number; name: string; email: string } | null;
+    can_update_location: boolean;
 };
 
 type VehicleForm = {
@@ -50,6 +51,7 @@ type Props = {
     drivers: Driver[];
     canCreateVehicle: boolean;
     canManageFleet: boolean;
+    canUpdateLocation: boolean;
     isDriverWorkspace: boolean;
     activeCarrierCompany?: { id: number; name: string; carrier_profile_type?: string | null } | null;
 };
@@ -60,6 +62,7 @@ export default function Index({
     drivers,
     canCreateVehicle,
     canManageFleet,
+    canUpdateLocation,
     isDriverWorkspace,
     activeCarrierCompany,
 }: Props) {
@@ -103,9 +106,11 @@ export default function Index({
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        <Button asChild variant="secondary">
-                            <Link href={route('carrier.location')}>{t('vehicles.geo')}</Link>
-                        </Button>
+                        {canUpdateLocation && (
+                            <Button asChild variant="secondary">
+                                <Link href={route('carrier.location')}>{t('vehicles.geo')}</Link>
+                            </Button>
+                        )}
                         <Button asChild variant="secondary">
                             <Link href={route('carrier.deliveries.index')}>Мои рейсы</Link>
                         </Button>

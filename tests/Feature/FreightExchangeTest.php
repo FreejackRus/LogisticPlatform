@@ -413,10 +413,20 @@ it('separates carrier fleet managers from company drivers', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('Freight/Vehicles/Index')
             ->where('canManageFleet', true)
+            ->where('canUpdateLocation', false)
             ->where('isDriverWorkspace', false)
             ->where('activeCarrierCompany.id', $company->id)
             ->where('vehicles.0.id', $companyVehicle->id)
+            ->where('vehicles.0.can_update_location', false)
             ->has('vehicles', 1)
+        );
+
+    $this->actingAs($manager)
+        ->get(route('carrier.location'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Freight/Vehicles/Location')
+            ->has('vehicles', 0)
         );
 
     $this->actingAs($driver)
@@ -425,7 +435,18 @@ it('separates carrier fleet managers from company drivers', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('Freight/Vehicles/Index')
             ->where('canManageFleet', false)
+            ->where('canUpdateLocation', true)
             ->where('isDriverWorkspace', true)
+            ->where('vehicles.0.id', $companyVehicle->id)
+            ->where('vehicles.0.can_update_location', true)
+            ->has('vehicles', 1)
+        );
+
+    $this->actingAs($driver)
+        ->get(route('carrier.location'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Freight/Vehicles/Location')
             ->where('vehicles.0.id', $companyVehicle->id)
             ->has('vehicles', 1)
         );

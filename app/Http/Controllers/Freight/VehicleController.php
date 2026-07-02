@@ -105,11 +105,13 @@ class VehicleController extends Controller
                     'name' => $vehicle->assignedDriver->name,
                     'email' => $vehicle->assignedDriver->email,
                 ] : null,
+                'can_update_location' => $request->user()->can('updateLocation', $vehicle),
             ]),
             'options' => config('freight.options'),
             'drivers' => $this->availableDrivers($request),
             'canCreateVehicle' => (bool) $request->user()->can('create', Vehicle::class),
             'canManageFleet' => $request->user()->canManageCarrierFleet(),
+            'canUpdateLocation' => $this->locationVehiclesFor($request)->exists(),
             'isDriverWorkspace' => $request->user()->isCarrierCompanyDriver(),
             'activeCarrierCompany' => $request->user()->activeCarrierCompany() ? [
                 'id' => $request->user()->activeCarrierCompany()->id,
@@ -196,7 +198,7 @@ class VehicleController extends Controller
         abort_unless($request->user()->isCarrier(), 403);
 
         return Inertia::render('Freight/Vehicles/Location', [
-            'vehicles' => $this->visibleVehiclesFor($request)->get(),
+            'vehicles' => $this->locationVehiclesFor($request)->get(),
             'intervalSeconds' => config('freight.location.update_interval_seconds'),
         ]);
     }
@@ -323,6 +325,16 @@ class VehicleController extends Controller
         return Vehicle::query()
             ->with('assignedDriver')
             ->where(fn ($query) => $this->scopeCarrierVehicles($query, $user));
+    }
+
+    private function locationVehiclesFor(Request $request)
+    {
+        $user = $request->user();
+
+        return Vehicle::query()
+            ->where(fn ($query) => $query
+                ->where('carrier_id', $user->id)
+                ->orWhere('assigned_driver_id', $user->id));
     }
 
     private function carrierCanAccessVehicle(Request $request, Vehicle $vehicle): bool
