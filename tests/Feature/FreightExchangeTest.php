@@ -898,7 +898,27 @@ it('limits delivery operations to the assigned driver when a fleet vehicle has o
         ->assertRedirect();
 
     expect($load->refresh()->delivery_stage)->toBe('en_route_to_pickup')
-        ->and($bid->refresh()->carrier_cargo_photo_path)->toStartWith('bid-cargo/');
+        ->and($bid->refresh()->carrier_cargo_photo_path)->toStartWith('bid-cargo/')
+        ->and(FreightNotification::query()
+            ->where('user_id', $shipper->id)
+            ->where('type', 'delivery_event')
+            ->where('data_json->bid_id', $bid->id)
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $owner->id)
+            ->where('type', 'delivery_event')
+            ->where('data_json->bid_id', $bid->id)
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $manager->id)
+            ->where('type', 'delivery_event')
+            ->where('data_json->bid_id', $bid->id)
+            ->exists())->toBeTrue()
+        ->and(FreightNotification::query()
+            ->where('user_id', $driver->id)
+            ->where('type', 'delivery_event')
+            ->where('data_json->bid_id', $bid->id)
+            ->exists())->toBeFalse();
 });
 
 it('shows carrier bid workspace by fleet role', function () {

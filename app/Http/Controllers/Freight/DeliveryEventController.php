@@ -106,8 +106,8 @@ class DeliveryEventController extends Controller
 
     private function notifyDeliveryEvent(FreightLoad $load, Bid $bid, DeliveryEvent $event, User $actor): void
     {
-        $recipients = collect([$load->shipper_id, $bid->carrier_id, $bid->vehicle?->assigned_driver_id])
-            ->filter()
+        $recipients = $bid->notificationRecipientIds()
+            ->push($load->shipper_id)
             ->unique()
             ->reject(fn ($userId) => $userId === $actor->id);
 
