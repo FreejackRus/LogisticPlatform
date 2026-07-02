@@ -49,7 +49,11 @@ class DispatcherController extends Controller
             ],
             'loads' => FreightLoad::active()->with('company')->latest()->limit(15)->get(),
             'vehicles' => Vehicle::visibleOnMap()->with('company')->latest('last_location_at')->limit(15)->get(),
-            'connections' => DispatcherConnection::with(['freightLoad', 'dispatcher', 'carrier'])->latest()->limit(15)->get(),
+            'connections' => DispatcherConnection::with(['freightLoad.company', 'dispatcher', 'shipper.company', 'carrier.company', 'vehicle', 'bid'])
+                ->latest()
+                ->limit(15)
+                ->get()
+                ->map(fn (DispatcherConnection $connection) => $this->dispatcherConnectionPayload($connection)),
         ]);
     }
 
@@ -58,9 +62,10 @@ class DispatcherController extends Controller
         Gate::authorize('viewAny', DispatcherConnection::class);
 
         return Inertia::render('Freight/Dispatcher/Connections', [
-            'connections' => DispatcherConnection::with(['freightLoad', 'dispatcher', 'shipper', 'carrier', 'vehicle'])
+            'connections' => DispatcherConnection::with(['freightLoad.company', 'dispatcher', 'shipper.company', 'carrier.company', 'vehicle', 'bid'])
                 ->latest()
-                ->paginate(30),
+                ->paginate(30)
+                ->through(fn (DispatcherConnection $connection) => $this->dispatcherConnectionPayload($connection)),
         ]);
     }
 
@@ -69,7 +74,9 @@ class DispatcherController extends Controller
         Gate::authorize('view', $connection);
 
         return Inertia::render('Freight/Dispatcher/ConnectionShow', [
-            'connection' => $connection->load(['freightLoad.company', 'shipper.company', 'carrier.company', 'vehicle', 'bid']),
+            'connection' => $this->dispatcherConnectionPayload(
+                $connection->load(['freightLoad.company', 'dispatcher', 'shipper.company', 'carrier.company', 'vehicle', 'bid']),
+            ),
             'auditLogs' => AuditLog::with('actor')
                 ->where('entity_type', DispatcherConnection::class)
                 ->where('entity_id', $connection->id)
@@ -347,6 +354,61 @@ class DispatcherController extends Controller
                 'show' => route('loads.show', $load),
                 'map' => route('dispatcher.map', ['load_id' => $load->id]),
             ],
+        ];
+    }
+
+    private function dispatcherConnectionPayload(DispatcherConnection $connection): array
+    {
+        return [
+            'id' => $connection->id,
+            'status' => $connection->status,
+            'contact_method' => $connection->contact_method,
+            'summary' => $connection->summary,
+            'internal_comment' => $connection->internal_comment,
+            'shipper_contacted_at' => $this->formatDateTime($connection->shipper_contacted_at),
+            'carrier_contacted_at' => $this->formatDateTime($connection->carrier_contacted_at),
+            'connected_at' => $this->formatDateTime($connection->connected_at),
+            'closed_at' => $this->formatDateTime($connection->closed_at),
+            'created_at' => $this->formatDateTime($connection->created_at),
+            'freight_load' => $connection->freightLoad ? [
+                'id' => $connection->freightLoad->id,
+                'title' => $connection->freightLoad->title,
+                'loading_city' => $connection->freightLoad->loading_city,
+                'unloading_city' => $connection->freightLoad->unloading_city,
+                'company' => $connection->freightLoad->company ? [
+                    'name' => $connection->freightLoad->company->name,
+                ] : null,
+            ] : null,
+            'dispatcher' => $connection->dispatcher ? [
+                'id' => $connection->dispatcher->id,
+                'name' => $connection->dispatcher->name,
+            ] : null,
+            'shipper' => $connection->shipper ? [
+                'id' => $connection->shipper->id,
+                'name' => $connection->shipper->name,
+                'phone' => $connection->shipper->phone,
+                'email' => $connection->shipper->email,
+                'company' => $connection->shipper->company ? [
+                    'name' => $connection->shipper->company->name,
+                    'phone' => $connection->shipper->company->phone,
+                    'email' => $connection->shipper->company->email,
+                ] : null,
+            ] : null,
+            'carrier' => $connection->carrier ? [
+                'id' => $connection->carrier->id,
+                'name' => $connection->carrier->name,
+                'company' => $connection->carrier->company ? [
+                    'name' => $connection->carrier->company->name,
+                ] : null,
+            ] : null,
+            'vehicle' => $connection->vehicle ? [
+                'id' => $connection->vehicle->id,
+                'title' => $connection->vehicle->title,
+            ] : null,
+            'bid' => $connection->bid ? [
+                'id' => $connection->bid->id,
+                'status' => $connection->bid->status,
+            ] : null,
         ];
     }
 

@@ -227,7 +227,13 @@ function formatDateTime(value?: string | null) {
         return '-';
     }
 
-    return new Date(value).toLocaleString('ru-RU');
+    if (!value.includes('T')) {
+        return value;
+    }
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ru-RU');
 }
 
 function formatValue(value: unknown) {

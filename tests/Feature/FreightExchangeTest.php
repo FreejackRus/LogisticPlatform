@@ -2155,6 +2155,16 @@ it('allows dispatcher connections without changing load status automatically', f
     }
 
     $this->actingAs($dispatcher)
+        ->get(route('dispatcher.connections.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Freight/Dispatcher/Connections')
+            ->where('connections.data.0.id', $connection->id)
+            ->where('connections.data.0.created_at', fn ($value) => is_string($value) && ! str_contains($value, 'T'))
+            ->where('connections.data.0.freight_load.title', 'Active load')
+        );
+
+    $this->actingAs($dispatcher)
         ->post(route('dispatcher.connections.store'), [
             'load_id' => $load->id,
             'vehicle_id' => $vehicle->id,
@@ -2201,6 +2211,7 @@ it('allows dispatcher connections without changing load status automatically', f
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('Freight/Dispatcher/ConnectionShow')
             ->where('connection.id', $connection->id)
+            ->where('connection.created_at', fn ($value) => is_string($value) && ! str_contains($value, 'T'))
             ->where('auditLogs.0.action', 'dispatcher_connection.created')
         );
 
