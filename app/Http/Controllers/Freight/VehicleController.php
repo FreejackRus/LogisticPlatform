@@ -98,7 +98,7 @@ class VehicleController extends Controller
 
         return Inertia::render('Freight/Vehicles/Index', [
             'vehicles' => $this->visibleVehiclesFor($request)->latest()->get()->map(fn (Vehicle $vehicle) => [
-                ...$vehicle->toArray(),
+                ...$this->vehiclePayload($vehicle, forForm: true),
                 'photo_url' => $this->publicUrl($vehicle->photo_path),
                 'assigned_driver' => $vehicle->assignedDriver ? [
                     'id' => $vehicle->assignedDriver->id,
@@ -131,7 +131,7 @@ class VehicleController extends Controller
 
         return Inertia::render('Freight/Vehicles/Show', [
             'vehicle' => [
-                ...$vehicle->toArray(),
+                ...$this->vehiclePayload($vehicle),
                 'photo_url' => $this->publicUrl($vehicle->photo_path),
                 'company' => $vehicle->company,
                 'carrier' => $vehicle->carrier,
@@ -148,7 +148,7 @@ class VehicleController extends Controller
 
         return Inertia::render('Freight/Vehicles/Edit', [
             'vehicle' => [
-                ...$vehicle->toArray(),
+                ...$this->vehiclePayload($vehicle),
                 'photo_url' => $this->publicUrl($vehicle->photo_path),
                 'assigned_driver' => $vehicle->assignedDriver,
             ],
@@ -316,6 +316,37 @@ class VehicleController extends Controller
     private function publicUrl(?string $path): ?string
     {
         return $path ? '/storage/'.ltrim($path, '/') : null;
+    }
+
+    private function vehiclePayload(Vehicle $vehicle, bool $forForm = false): array
+    {
+        return [
+            ...$vehicle->toArray(),
+            'available_from_date' => $forForm
+                ? $this->formatDateInput($vehicle->available_from_date)
+                : $this->formatDate($vehicle->available_from_date),
+            'available_until_date' => $forForm
+                ? $this->formatDateInput($vehicle->available_until_date)
+                : $this->formatDate($vehicle->available_until_date),
+            'last_location_at' => $this->formatDateTime($vehicle->last_location_at),
+            'created_at' => $this->formatDateTime($vehicle->created_at),
+            'updated_at' => $this->formatDateTime($vehicle->updated_at),
+        ];
+    }
+
+    private function formatDate($date): ?string
+    {
+        return $date ? $date->format('d.m.Y') : null;
+    }
+
+    private function formatDateTime($date): ?string
+    {
+        return $date ? $date->format('d.m.Y H:i') : null;
+    }
+
+    private function formatDateInput($date): ?string
+    {
+        return $date ? $date->format('Y-m-d') : null;
     }
 
     private function visibleVehiclesFor(Request $request)

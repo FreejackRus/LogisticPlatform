@@ -398,6 +398,9 @@ it('separates carrier fleet managers from company drivers', function () {
         'title' => 'Company truck',
         'is_available' => true,
         'is_location_visible' => true,
+        'available_from_date' => '2026-07-05',
+        'available_until_date' => '2026-07-07',
+        'last_location_at' => '2026-07-02 12:30:00',
     ]);
 
     Vehicle::create([
@@ -418,7 +421,18 @@ it('separates carrier fleet managers from company drivers', function () {
             ->where('activeCarrierCompany.id', $company->id)
             ->where('vehicles.0.id', $companyVehicle->id)
             ->where('vehicles.0.can_update_location', false)
+            ->where('vehicles.0.available_from_date', '05.07.2026')
+            ->where('vehicles.0.last_location_at', '02.07.2026 12:30')
             ->has('vehicles', 1)
+        );
+
+    $this->actingAs($manager)
+        ->get(route('vehicles.edit', $companyVehicle))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Freight/Vehicles/Edit')
+            ->where('vehicle.available_from_date', '2026-07-05')
+            ->where('vehicle.available_until_date', '2026-07-07')
         );
 
     $this->actingAs($manager)
