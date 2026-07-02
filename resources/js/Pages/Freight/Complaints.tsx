@@ -1,8 +1,33 @@
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { FormEventHandler } from 'react';
+
+type ComplaintItem = {
+    id: number;
+    type: string;
+    status: string;
+    message: string;
+    admin_comment?: string | null;
+    created_at?: string | null;
+    target_user?: {
+        name?: string | null;
+        role?: string | null;
+    } | null;
+    context?: {
+        load_title?: string | null;
+        load_url?: string | null;
+        bid_id?: number | null;
+        dispatcher_connection_id?: number | null;
+    };
+};
+
+type Props = {
+    complaints: {
+        data: ComplaintItem[];
+    };
+};
 
 const typeLabels: Record<string, string> = {
     fraud: 'Мошенничество',
@@ -21,7 +46,7 @@ const statusLabels: Record<string, string> = {
     rejected: 'Отклонена',
 };
 
-export default function Complaints({ complaints }: any) {
+export default function Complaints({ complaints }: Props) {
     const { data, setData, post, processing, reset, errors } = useForm({
         type: 'other',
         message: '',
@@ -58,12 +83,38 @@ export default function Complaints({ complaints }: any) {
                     <Button className="w-fit" disabled={processing}>Отправить</Button>
                 </form>
                 <div className="grid gap-3">
-                    {complaints.data.map((item: any) => (
+                    {complaints.data.map((item) => (
                         <div key={item.id} className="rounded-md border p-4 text-sm">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="font-medium">{typeLabels[item.type] ?? item.type}</p>
+                                <div>
+                                    <p className="font-medium">{typeLabels[item.type] ?? item.type}</p>
+                                    {item.created_at && <p className="text-xs text-muted-foreground">{item.created_at}</p>}
+                                </div>
                                 <Badge variant="secondary">{statusLabels[item.status] ?? item.status}</Badge>
                             </div>
+                            {(item.context?.load_title || item.target_user) && (
+                                <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                    {item.context?.load_title && (
+                                        item.context.load_url ? (
+                                            <Link className="rounded bg-muted px-2 py-1 hover:underline" href={item.context.load_url}>
+                                                {item.context.load_title}
+                                            </Link>
+                                        ) : (
+                                            <span className="rounded bg-muted px-2 py-1">{item.context.load_title}</span>
+                                        )
+                                    )}
+                                    {item.target_user?.name && (
+                                        <span className="rounded bg-muted px-2 py-1">
+                                            {item.target_user.name}
+                                            {item.target_user.role ? ` · ${item.target_user.role}` : ''}
+                                        </span>
+                                    )}
+                                    {item.context?.bid_id && <span className="rounded bg-muted px-2 py-1">Отклик #{item.context.bid_id}</span>}
+                                    {item.context?.dispatcher_connection_id && (
+                                        <span className="rounded bg-muted px-2 py-1">Соединение #{item.context.dispatcher_connection_id}</span>
+                                    )}
+                                </div>
+                            )}
                             <p className="mt-2">{item.message}</p>
                             {item.admin_comment && (
                                 <div className="mt-3 rounded-md bg-muted p-3">

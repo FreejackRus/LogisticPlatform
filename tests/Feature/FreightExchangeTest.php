@@ -2599,6 +2599,18 @@ it('keeps complaints tied to the reporter business context', function () {
         ->assertRedirect();
 
     expect(Complaint::count())->toBe(3);
+
+    $this->actingAs($carrier)
+        ->get(route('complaints.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('Freight/Complaints')
+            ->where('complaints.data.0.type', 'payment_issue')
+            ->where('complaints.data.0.context.load_title', 'Complaint load')
+            ->where('complaints.data.0.context.load_url', route('loads.show', $load))
+            ->where('complaints.data.0.target_user.name', $shipper->name)
+            ->where('complaints.data.0.created_at', fn ($value) => is_string($value) && ! str_contains($value, 'T'))
+        );
 });
 
 it('allows admins to moderate freight entities and complaints', function () {

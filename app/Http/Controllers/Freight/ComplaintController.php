@@ -22,7 +22,12 @@ class ComplaintController extends Controller
         Gate::authorize('viewAny', Complaint::class);
 
         return Inertia::render('Freight/Complaints', [
-            'complaints' => Complaint::where('reporter_id', $request->user()->id)->latest()->paginate(30),
+            'complaints' => Complaint::query()
+                ->with(['targetUser', 'freightLoad', 'bid.freightLoad', 'dispatcherConnection.freightLoad'])
+                ->where('reporter_id', $request->user()->id)
+                ->latest()
+                ->paginate(30)
+                ->through(fn (Complaint $complaint) => $this->complaintPayload($complaint)),
         ]);
     }
 
@@ -48,6 +53,39 @@ class ComplaintController extends Controller
         ]);
 
         return back()->with('status', 'Жалоба отправлена.');
+    }
+
+    private function complaintPayload(Complaint $complaint): array
+    {
+        $load = $complaint->freightLoad
+            ?: $complaint->bid?->freightLoad
+            ?: $complaint->dispatcherConnection?->freightLoad;
+
+        return [
+            'id' => $complaint->id,
+            'type' => $complaint->type,
+            'status' => $complaint->status,
+            'message' => $complaint->message,
+            'admin_comment' => $complaint->admin_comment,
+            'created_at' => $this->formatDateTime($complaint->created_at),
+            'target_user' => $complaint->targetUser ? [
+                'id' => $complaint->targetUser->id,
+                'name' => $complaint->targetUser->name,
+                'role' => $complaint->targetUser->role,
+            ] : null,
+            'context' => [
+                'load_id' => $load?->id,
+                'load_title' => $load?->title,
+                'load_url' => $load ? route('loads.show', $load) : null,
+                'bid_id' => $complaint->bid_id,
+                'dispatcher_connection_id' => $complaint->dispatcher_connection_id,
+            ],
+        ];
+    }
+
+    private function formatDateTime($date): ?string
+    {
+        return $date ? $date->format('d.m.Y H:i') : null;
     }
 
     private function ensureComplaintContextAllowed(User $user, array $data): void
